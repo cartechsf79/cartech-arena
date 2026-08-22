@@ -23,6 +23,25 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // --------------------------------------------------------------------
+    // Fonction utilitaire : est-ce que 2 résultats de duel concordent ?
+    // Chaque joueur saisit SON propre résultat sous la forme
+    // { myScore, oppScore, iWon }. Ça concorde si les scores sont
+    // symétriques (mon score = son "score adverse" vu par l'autre, et
+    // inversement) et si un seul des deux dit avoir gagné.
+    // --------------------------------------------------------------------
+    function matchResults(rf, rt) {
+      return rf != null && rt != null
+        && rf.myScore == rt.oppScore
+        && rf.oppScore == rt.myScore
+        && rf.iWon == !rt.iWon;
+    }
+
+    function isOrganizer() {
+      return request.auth != null
+        && request.auth.token.email.lower() == 'cartechsf79@gmail.com';
+    }
+
     match /users/{userId} {
 
       // Tout compte connecté peut lire les profils (classement, recherche
@@ -75,6 +94,103 @@ service cloud.firestore {
       // compte"). L'organisateur ne supprime pas de compte depuis le site
       // pour l'instant (à faire depuis la console Firebase si nécessaire).
       allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // ========================================================================
+    // "Duel du jour" — session de duels en boutique, gérée en direct.
+    //
+    //   dailySession/current                      -> statut de la soirée
+    //   dailySession/current/participants/{uid}    -> présence + validation
+    //   dailySession/current/duels/{duelId}        -> propositions + résultats
+    // ========================================================================
+
+    match /dailySession/{sessionId} {
+      // Tout le monde peut voir si une session est ouverte / son heure de fin.
+      allow read: if request.auth != null;
+      // Seul l'organisateur ouvre / ferme la session (et fixe l'heure de fin).
+      allow write: if isOrganizer();
+    }
+
+    match /dailySession/{sessionId}/participants/{uid} {
+      allow read: if request.auth != null;
+
+      // Un joueur ne peut créer que SA propre demande, toujours en attente de
+      // validation par l'organisateur. L'organisateur peut créer directement
+      // sa propre fiche déjà "disponible" (il n'a pas besoin de s'auto-valider).
+      allow create: if request.auth != null && (
+        (request.auth.uid == uid && request.resource.data.uid == uid
+          && request.resource.data.status == 'attente_validation')
+        || isOrganizer()
+      );
+
+      // L'organisateur gère tout (valider/refuser/exclure). Un joueur ne peut
+      // que se retirer lui-même ("Quitter le duel du jour"), sans toucher à
+      // ses propres pseudo/photo/décorations affichés dans la liste.
+      allow update: if isOrganizer() || (
+        request.auth != null && request.auth.uid == uid
+        && resource.data.status in ['attente_validation', 'disponible']
+        && request.resource.data.status == 'parti'
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.pseudo == resource.data.pseudo
+        && request.resource.data.photoDataUrl == resource.data.photoDataUrl
+        && request.resource.data.decorations == resource.data.decorations
+      );
+
+      allow delete: if isOrganizer();
+    }
+
+    match /dailySession/{sessionId}/duels/{duelId} {
+      // Lecture ouverte à tous les connectés : nécessaire pour que chacun
+      // puisse calculer, côté client, qui est déjà occupé par un autre duel.
+      allow read: if request.auth != null;
+
+      // Seul l'auteur de la proposition peut la créer, ciblant quelqu'un
+      // d'autre, sans résultat déjà rempli.
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.fromUid
+        && request.resource.data.toUid != request.resource.data.fromUid
+        && request.resource.data.status == 'proposition'
+        && request.resource.data.resultFrom == null
+        && request.resource.data.resultTo == null;
+
+      allow update: if isOrganizer() || (
+        // Le destinataire accepte ou refuse la proposition.
+        request.auth != null && request.auth.uid == resource.data.toUid
+        && resource.data.status == 'proposition'
+        && request.resource.data.status in ['en_cours', 'refuse']
+        && request.resource.data.fromUid == resource.data.fromUid
+        && request.resource.data.toUid == resource.data.toUid
+        && request.resource.data.game == resource.data.game
+        && request.resource.data.format == resource.data.format
+        && request.resource.data.resultFrom == null
+        && request.resource.data.resultTo == null
+      ) || (
+        // Le joueur "fromUid" saisit / corrige SON résultat uniquement.
+        request.auth != null && request.auth.uid == resource.data.fromUid
+        && resource.data.status in ['en_cours', 'litige']
+        && request.resource.data.resultTo == resource.data.resultTo
+        && request.resource.data.fromUid == resource.data.fromUid
+        && request.resource.data.toUid == resource.data.toUid
+        && request.resource.data.status == (
+             matchResults(request.resource.data.resultFrom, resource.data.resultTo)
+               ? 'termine'
+               : (resource.data.resultTo == null ? 'en_cours' : 'litige')
+           )
+      ) || (
+        // Le joueur "toUid" saisit / corrige SON résultat uniquement.
+        request.auth != null && request.auth.uid == resource.data.toUid
+        && resource.data.status in ['en_cours', 'litige']
+        && request.resource.data.resultFrom == resource.data.resultFrom
+        && request.resource.data.fromUid == resource.data.fromUid
+        && request.resource.data.toUid == resource.data.toUid
+        && request.resource.data.status == (
+             matchResults(resource.data.resultFrom, request.resource.data.resultTo)
+               ? 'termine'
+               : (resource.data.resultFrom == null ? 'en_cours' : 'litige')
+           )
+      );
+
+      allow delete: if isOrganizer();
     }
   }
 }

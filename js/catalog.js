@@ -40,3 +40,18 @@ export function applyTheme(themeId) {
   const theme = findTheme(themeId) || findTheme("classique");
   document.body.setAttribute("data-theme", theme.id);
 }
+
+// ---------------------------------------------------------------------------
+// Jeux et formats disponibles pour un duel / un événement
+// ---------------------------------------------------------------------------
+export const GAMES = ["Pokémon TCG", "Lorcana", "One Piece Card Game"];
+
+export const FORMATS = [
+  { id: "bo1", label: "BO1 (1 manche)", games: 1 },
+  { id: "bo3", label: "BO3 (jusqu'à 3 manches)", games: 3 },
+  { id: "bo5", label: "BO5 (jusqu'à 5 manches)", games: 5 },
+];
+
+export function findFormat(id) {
+  return FORMATS.find((f) => f.id === id) || FORMATS[0];
+}

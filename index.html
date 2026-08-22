@@ -97,12 +97,13 @@
           <div class="stat-box"><b id="stat-losses">0</b><span>Défaites</span></div>
         </div>
 
+        <button class="btn btn-primary" id="btn-open-daily-duel" type="button">⚔️ Duel du jour</button>
+
         <!-- Visible uniquement pour le compte organisateur -->
         <div class="organizer-panel organizer-only" style="display:none;">
           <b>🛡️ Espace organisateur</b><br>
-          Ton compte a les droits spéciaux. Les outils de gestion des défis, de
-          validation des litiges et le tableau de bord boutique arriveront ici
-          à la prochaine étape.
+          Le « Duel du jour » se gère depuis le bouton ci-dessus. Les outils
+          d'événement/tournoi arriveront ici à la prochaine étape.
         </div>
 
         <button class="btn btn-ghost" id="btn-logout" type="button">Se déconnecter</button>
@@ -199,6 +200,21 @@
     </div>
   </div>
 
+  <!-- ============================================================ -->
+  <!-- ÉCRAN : Duel du jour -->
+  <!-- ============================================================ -->
+  <div class="view" id="view-daily-duel">
+    <div class="app-wrap settings-wrap">
+      <div class="settings-header">
+        <button class="icon-btn" id="btn-close-daily-duel" type="button" title="Retour">←</button>
+        <h1 class="settings-title">⚔️ Duel du jour</h1>
+      </div>
+
+      <div class="card settings-section" id="dd-organizer-panel" style="display:none;"></div>
+      <div class="card settings-section" id="dd-player-area"></div>
+    </div>
+  </div>
+
   <!-- Modale : confirmation de suppression, étape 1 -->
   <div class="overlay" id="overlay-delete-step1">
     <div class="modal">
@@ -238,5 +254,6 @@
 
   <script type="module" src="js/app.js"></script>
   <script type="module" src="js/settings.js"></script>
+  <script type="module" src="js/daily-duel.js"></script>
 </body>
 </html>

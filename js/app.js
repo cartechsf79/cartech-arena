@@ -78,6 +78,13 @@ function setLoading(button, loading) {
 // ---------------------------------------------------------------------------
 // Création / récupération du profil Firestore lié au compte
 // ---------------------------------------------------------------------------
+// Le pseudo choisi à l'inscription est mémorisé ici pendant la création du
+// compte : selon la rapidité de la connexion, onAuthStateChanged (plus bas)
+// peut se déclencher et créer le profil Firestore AVANT que handleSignup()
+// n'ait eu le temps de lui transmettre le pseudo directement — sans ce
+// filet, le profil se retrouverait créé avec l'email en guise de pseudo.
+let pendingSignupPseudo = null;
+
 async function ensureUserProfile(user, pseudoFromSignup) {
   const ref = doc(db, "users", user.uid);
   const snap = await getDoc(ref);
@@ -100,7 +107,7 @@ async function ensureUserProfile(user, pseudoFromSignup) {
   }
 
   const isOrganizer = (user.email || "").toLowerCase() === ORGANIZER_EMAIL.toLowerCase();
-  const pseudo = pseudoFromSignup || user.displayName || (user.email || "").split("@")[0];
+  const pseudo = pseudoFromSignup || pendingSignupPseudo || user.displayName || (user.email || "").split("@")[0];
 
   const profile = {
     pseudo,
@@ -136,6 +143,7 @@ async function handleSignup(e) {
   }
 
   setLoading(btn, true);
+  pendingSignupPseudo = pseudo;
   try {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     await updateProfile(cred.user, { displayName: pseudo });
@@ -144,6 +152,7 @@ async function handleSignup(e) {
   } catch (err) {
     showToast(friendlyError(err), true);
   } finally {
+    pendingSignupPseudo = null;
     setLoading(btn, false);
   }
 }
@@ -235,6 +244,7 @@ function showAuthScreen() {
   $("#view-auth").classList.add("active");
   $("#view-app").classList.remove("active");
   $("#view-settings").classList.remove("active");
+  $("#view-daily-duel")?.classList.remove("active");
   applyTheme("classique");
 }
 
@@ -242,12 +252,14 @@ function showAppScreen() {
   $("#view-auth").classList.remove("active");
   $("#view-app").classList.add("active");
   $("#view-settings").classList.remove("active");
+  $("#view-daily-duel")?.classList.remove("active");
 }
 
 export function showSettingsScreen() {
   $("#view-auth").classList.remove("active");
   $("#view-app").classList.remove("active");
   $("#view-settings").classList.add("active");
+  $("#view-daily-duel")?.classList.remove("active");
 }
 
 // ---------------------------------------------------------------------------
