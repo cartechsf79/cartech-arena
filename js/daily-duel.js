@@ -391,7 +391,11 @@ function renderPlayerArea() {
   }
 
   if (me.status === "attente_validation") {
-    el.innerHTML = `<p class="settings-note">⏳ En attente de validation par l'organisateur…</p>`;
+    el.innerHTML = `
+      <p class="settings-note">⏳ En attente de validation par l'organisateur…</p>
+      <button class="btn btn-ghost" type="button" id="dd-btn-leave">Quitter le duel du jour</button>
+    `;
+    $("#dd-btn-leave")?.addEventListener("click", () => withErrorToast(leaveSession));
     return;
   }
 

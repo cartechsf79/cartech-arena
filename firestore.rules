@@ -123,17 +123,28 @@ service cloud.firestore {
         || isOrganizer()
       );
 
-      // L'organisateur gère tout (valider/refuser/exclure). Un joueur ne peut
-      // que se retirer lui-même ("Quitter le duel du jour"), sans toucher à
-      // ses propres pseudo/photo/décorations affichés dans la liste.
+      // L'organisateur gère tout (valider/refuser/exclure). Un joueur peut
+      // seulement : se retirer lui-même ("Quitter le duel du jour"), sans
+      // toucher à ses propres pseudo/photo/décorations affichés dans la
+      // liste ; OU redemander à rejoindre après un départ / refus /
+      // exclusion (repasse en attente de validation par l'organisateur).
       allow update: if isOrganizer() || (
         request.auth != null && request.auth.uid == uid
-        && resource.data.status in ['attente_validation', 'disponible']
-        && request.resource.data.status == 'parti'
         && request.resource.data.uid == resource.data.uid
-        && request.resource.data.pseudo == resource.data.pseudo
-        && request.resource.data.photoDataUrl == resource.data.photoDataUrl
-        && request.resource.data.decorations == resource.data.decorations
+        && (
+          (
+            resource.data.status in ['attente_validation', 'disponible']
+            && request.resource.data.status == 'parti'
+            && request.resource.data.pseudo == resource.data.pseudo
+            && request.resource.data.photoDataUrl == resource.data.photoDataUrl
+            && request.resource.data.decorations == resource.data.decorations
+          )
+          ||
+          (
+            resource.data.status in ['parti', 'refuse', 'exclu']
+            && request.resource.data.status == 'attente_validation'
+          )
+        )
       );
 
       allow delete: if isOrganizer();

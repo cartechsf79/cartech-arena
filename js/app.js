@@ -53,6 +53,7 @@ const ERROR_MESSAGES = {
   "auth/unauthorized-domain": "Ce site n'est pas encore autorisé pour Google (à ajouter dans Firebase > Authentication > Paramètres > Domaines autorisés).",
   "auth/network-request-failed": "Problème de connexion réseau. Réessaie.",
   "auth/requires-recent-login": "Pour ta sécurité, reconnecte-toi puis réessaie cette action.",
+  "permission-denied": "Action refusée (droits insuffisants). Si ça te semble anormal, préviens l'organisateur.",
 };
 
 export function friendlyError(err) {
