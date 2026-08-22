@@ -15,15 +15,15 @@
 // ============================================================================
 
 export const firebaseConfig = {
-  apiKey: "REMPLACE_MOI",
-  authDomain: "REMPLACE_MOI.firebaseapp.com",
-  projectId: "REMPLACE_MOI",
-  storageBucket: "REMPLACE_MOI.appspot.com",
-  messagingSenderId: "REMPLACE_MOI",
-  appId: "REMPLACE_MOI",
+  apiKey: "AIzaSyC6Okd35i0d8ZiNeYZjV3rk_98hCUV4ECU",
+  authDomain: "car-tech-arena.firebaseapp.com",
+  projectId: "car-tech-arena",
+  storageBucket: "car-tech-arena.firebasestorage.app",
+  messagingSenderId: "393887627074",
+  appId: "1:393887627074:web:8cf0c68c83b7fa65453adb",
 };
 
 // L'adresse email qui obtient automatiquement le rôle "organisateur"
 // dès qu'elle crée un compte (ou se connecte via Google) sur l'appli.
 // Mets ici TON adresse email, celle que tu utiliseras pour te connecter.
-export const ORGANIZER_EMAIL = "steven.forfert@gmail.com";
+export const ORGANIZER_EMAIL = "cartechsf79@gmail.com";
