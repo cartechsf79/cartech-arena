@@ -1,0 +1,50 @@
+rules_version = '2';
+
+// ============================================================================
+// Règles de sécurité Firestore — Car'Tech Arena
+//
+// À copier-coller dans : Firebase Console > Build > Firestore Database
+//                          > onglet "Règles" > remplacer tout le contenu > Publier
+//
+// Pourquoi ces règles existent : le code du site (js/app.js) décide côté
+// client si un compte est "joueur" ou "organisateur", mais un client peut
+// toujours être modifié par quelqu'un de malintentionné (via les outils
+// développeur du navigateur). Ces règles revérifient donc TOUJOURS côté
+// serveur qu'un compte ne peut devenir "organisateur" que s'il correspond à
+// l'email défini dans ORGANIZER_EMAIL (js/firebase-config.js) — remplace
+// "steven.forfert@gmail.com" ci-dessous si tu changes cet email.
+// ============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /users/{userId} {
+
+      // Tout compte connecté peut lire les profils (nécessaire pour afficher
+      // un futur classement général visible par tous les joueurs).
+      allow read: if request.auth != null;
+
+      // Un compte ne peut créer QUE son propre document (userId == son uid),
+      // et ne peut se donner le rôle "organisateur" que si son email
+      // correspond à l'adresse autorisée. Sinon, le rôle est forcément "joueur".
+      allow create: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.email == request.auth.token.email
+        && (
+          (request.resource.data.role == 'organisateur'
+            && request.auth.token.email.lower() == 'steven.forfert@gmail.com')
+          || request.resource.data.role == 'joueur'
+        );
+
+      // Un compte peut mettre à jour son propre document, mais jamais changer
+      // son propre rôle après coup (le rôle reste figé depuis la création).
+      allow update: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.role == resource.data.role;
+
+      // Personne ne supprime un profil depuis le site (à faire depuis la
+      // console Firebase si vraiment nécessaire).
+      allow delete: if false;
+    }
+  }
+}

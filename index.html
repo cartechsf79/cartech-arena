@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Car'Tech Arena</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ============================================================ -->
+  <!-- ÉCRAN : Connexion / Inscription (affiché si personne n'est connecté) -->
+  <!-- ============================================================ -->
+  <div class="view active" id="view-auth">
+    <div class="auth-wrap">
+      <div class="brand">
+        <div class="logo">⚔️</div>
+        <div>
+          <h1>Car'Tech Arena</h1>
+          <small>Ta boutique. Tes duels. Ton classement.</small>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="auth-tabs">
+          <div class="auth-tab active" data-tab="login">Connexion</div>
+          <div class="auth-tab" data-tab="signup">Créer un compte</div>
+        </div>
+
+        <!-- Connexion -->
+        <div class="auth-panel active" id="panel-login">
+          <form id="form-login">
+            <label for="login-email">Email</label>
+            <input type="email" id="login-email" required autocomplete="email">
+
+            <label for="login-password">Mot de passe</label>
+            <input type="password" id="login-password" required autocomplete="current-password">
+
+            <button class="btn btn-primary" type="submit" id="login-submit">Se connecter</button>
+          </form>
+          <div class="divider">ou</div>
+          <button class="btn btn-google" id="btn-google-login" type="button">
+            <span>🔵</span> Continuer avec Google
+          </button>
+        </div>
+
+        <!-- Inscription -->
+        <div class="auth-panel" id="panel-signup">
+          <form id="form-signup">
+            <label for="signup-pseudo">Pseudo</label>
+            <input type="text" id="signup-pseudo" required autocomplete="nickname" maxlength="24">
+
+            <label for="signup-email">Email</label>
+            <input type="email" id="signup-email" required autocomplete="email">
+
+            <label for="signup-password">Mot de passe</label>
+            <input type="password" id="signup-password" required autocomplete="new-password" minlength="6">
+
+            <button class="btn btn-primary" type="submit" id="signup-submit">Créer mon compte</button>
+          </form>
+          <div class="divider">ou</div>
+          <button class="btn btn-google" id="btn-google-signup" type="button">
+            <span>🔵</span> Continuer avec Google
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- ÉCRAN : Appli (affiché une fois connecté) -->
+  <!-- ============================================================ -->
+  <div class="view" id="view-app">
+    <div class="app-wrap">
+      <div class="brand">
+        <div class="logo">⚔️</div>
+        <div>
+          <h1>Car'Tech Arena</h1>
+          <small>Ta boutique. Tes duels. Ton classement.</small>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="profile-head">
+          <div class="profile-avatar" id="profile-avatar">🙂</div>
+          <div>
+            <div id="profile-pseudo">—</div>
+            <div id="profile-email">—</div>
+            <span class="badge" id="role-badge">—</span>
+          </div>
+        </div>
+
+        <div class="stat-row">
+          <div class="stat-box"><b id="stat-points">0</b><span>Points</span></div>
+          <div class="stat-box"><b id="stat-wins">0</b><span>Victoires</span></div>
+          <div class="stat-box"><b id="stat-losses">0</b><span>Défaites</span></div>
+        </div>
+
+        <!-- Visible uniquement pour le compte organisateur -->
+        <div class="organizer-panel organizer-only" style="display:none;">
+          <b>🛡️ Espace organisateur</b><br>
+          Ton compte a les droits spéciaux. Les outils de gestion des défis, de
+          validation des litiges et le tableau de bord boutique arriveront ici
+          à la prochaine étape.
+        </div>
+
+        <button class="btn btn-ghost" id="btn-logout" type="button">Se déconnecter</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
