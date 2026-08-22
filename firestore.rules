@@ -6,13 +6,18 @@ rules_version = '2';
 // À copier-coller dans : Firebase Console > Build > Firestore Database
 //                          > onglet "Règles" > remplacer tout le contenu > Publier
 //
-// Pourquoi ces règles existent : le code du site (js/app.js) décide côté
-// client si un compte est "joueur" ou "organisateur", mais un client peut
-// toujours être modifié par quelqu'un de malintentionné (via les outils
-// développeur du navigateur). Ces règles revérifient donc TOUJOURS côté
-// serveur qu'un compte ne peut devenir "organisateur" que s'il correspond à
-// l'email défini dans ORGANIZER_EMAIL (js/firebase-config.js) — remplace
-// "steven.forfert@gmail.com" ci-dessous si tu changes cet email.
+// Pourquoi ces règles existent : le code du site décide côté client si un
+// compte est "joueur" ou "organisateur", et quelles décorations/thèmes il
+// possède, mais un client peut toujours être modifié par quelqu'un de
+// malintentionné (via les outils développeur du navigateur). Ces règles
+// revérifient donc TOUJOURS côté serveur :
+//   - qu'un compte ne peut devenir "organisateur" que s'il correspond à
+//     l'adresse ci-dessous (remplace-la si tu changes ORGANIZER_EMAIL dans
+//     js/firebase-config.js),
+//   - qu'un joueur ne peut jamais changer son propre rôle, ses points, ou
+//     s'attribuer lui-même une décoration/un thème verrouillé,
+//   - que seul l'organisateur peut attribuer des décorations et des thèmes
+//     "Trophée" à un autre compte.
 // ============================================================================
 
 service cloud.firestore {
@@ -20,31 +25,56 @@ service cloud.firestore {
 
     match /users/{userId} {
 
-      // Tout compte connecté peut lire les profils (nécessaire pour afficher
-      // un futur classement général visible par tous les joueurs).
+      // Tout compte connecté peut lire les profils (classement, recherche
+      // d'un joueur, affichage de son profil).
       allow read: if request.auth != null;
 
-      // Un compte ne peut créer QUE son propre document (userId == son uid),
-      // et ne peut se donner le rôle "organisateur" que si son email
-      // correspond à l'adresse autorisée. Sinon, le rôle est forcément "joueur".
+      // Création : uniquement son propre document, avec un rôle cohérent et
+      // aucune décoration débloquée d'office (les décorations sont toujours
+      // attribuées après coup par l'organisateur, jamais à la création).
       allow create: if request.auth != null
         && request.auth.uid == userId
         && request.resource.data.email == request.auth.token.email
+        && request.resource.data.points == 0
+        && request.resource.data.wins == 0
+        && request.resource.data.losses == 0
+        && request.resource.data.decorations.owned.size() == 0
+        && request.resource.data.decorations.active == null
         && (
           (request.resource.data.role == 'organisateur'
-            && request.auth.token.email.lower() == 'steven.forfert@gmail.com')
+            && request.auth.token.email.lower() == 'cartechsf79@gmail.com')
           || request.resource.data.role == 'joueur'
         );
 
-      // Un compte peut mettre à jour son propre document, mais jamais changer
-      // son propre rôle après coup (le rôle reste figé depuis la création).
-      allow update: if request.auth != null
-        && request.auth.uid == userId
-        && request.resource.data.role == resource.data.role;
+      // Mise à jour :
+      //  - l'organisateur peut tout modifier sur n'importe quel compte
+      //    (attribution de décorations/thèmes, modération) ;
+      //  - un joueur peut modifier son propre document (pseudo, mot de passe
+      //    -- géré par Firebase Auth --, photo, décoration/thème ACTIFS),
+      //    mais jamais son rôle, ses points/victoires/défaites, ni les
+      //    listes de décorations/thèmes qu'il possède. Il ne peut choisir
+      //    comme actif qu'une décoration/un thème qu'il possède déjà.
+      allow update: if request.auth != null && (
+        request.auth.token.email.lower() == 'cartechsf79@gmail.com'
+        ||
+        (
+          request.auth.uid == userId
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.points == resource.data.points
+          && request.resource.data.wins == resource.data.wins
+          && request.resource.data.losses == resource.data.losses
+          && (!('decorations' in resource.data) || request.resource.data.decorations.owned == resource.data.decorations.owned)
+          && (!('theme' in resource.data) || request.resource.data.theme.owned == resource.data.theme.owned)
+          && (request.resource.data.decorations.active == null
+              || request.resource.data.decorations.active in request.resource.data.decorations.owned)
+          && (request.resource.data.theme.active in request.resource.data.theme.owned)
+        )
+      );
 
-      // Personne ne supprime un profil depuis le site (à faire depuis la
-      // console Firebase si vraiment nécessaire).
-      allow delete: if false;
+      // Un compte peut supprimer son propre profil (bouton "Supprimer mon
+      // compte"). L'organisateur ne supprime pas de compte depuis le site
+      // pour l'instant (à faire depuis la console Firebase si nécessaire).
+      allow delete: if request.auth != null && request.auth.uid == userId;
     }
   }
 }

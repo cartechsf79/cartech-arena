@@ -72,16 +72,29 @@ input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   background: #fff; color: #1a1a1a; margin-top: 10px;
   display: flex; align-items: center; justify-content: center; gap: 8px;
 }
+.btn-google:disabled { opacity: .4; cursor: not-allowed; }
 .divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 11.5px; margin: 16px 0 0; }
 .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--panel-border); }
 
 /* ---- app screen ---- */
 .app-wrap { width: 100%; max-width: 460px; }
 .profile-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
-.profile-avatar {
-  width: 54px; height: 54px; border-radius: 15px; background: var(--accent-grad);
-  display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 20px; flex-shrink: 0;
+
+/* ---- avatar (photo de profil + décoration) ---- */
+.avatar-shell {
+  position: relative; flex-shrink: 0; border-radius: 15px; padding: 3px;
 }
+.avatar-inner {
+  width: 100%; height: 100%; border-radius: 12px; background: var(--accent-grad);
+  display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 20px;
+  overflow: hidden;
+}
+.avatar-shell.has-deco { padding: 4px; }
+.avatar-shell.deco-or { background: linear-gradient(135deg, #f5d76e, #c9971f, #f5d76e); box-shadow: 0 0 0 2px #7a5c0f, 0 0 14px rgba(245,215,110,.5); }
+.avatar-shell.deco-flamme { background: linear-gradient(135deg, #ff8a3d, #e6432a, #ffb648); box-shadow: 0 0 0 2px #7a2a10, 0 0 14px rgba(255,100,40,.5); }
+.avatar-shell.deco-etoile { background: linear-gradient(135deg, #6fb1ff, #3d63d6, #9ad0ff); box-shadow: 0 0 0 2px #1c356e, 0 0 14px rgba(90,140,255,.5); }
+.avatar-shell.deco-confettis { background: linear-gradient(135deg, #ff7ac6, #7ad1ff, #ffe27a, #9dff7a); box-shadow: 0 0 0 2px #4a2a5c, 0 0 14px rgba(255,120,200,.4); }
+
 #profile-pseudo { font-weight: 800; font-size: 17px; }
 #profile-email { color: var(--muted); font-size: 12.5px; }
 
@@ -114,3 +127,94 @@ input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast-error { border-color: rgba(239,90,111,.5); color: #ffb3bd; }
+
+/* ---- icon button (engrenage paramètres, retour...) ---- */
+.icon-btn {
+  width: 38px; height: 38px; flex-shrink: 0; border-radius: 11px;
+  background: var(--bg2); border: 1px solid var(--panel-border); color: var(--text);
+  font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.icon-btn:hover { border-color: var(--accent); }
+
+/* ---- écran Paramètres ---- */
+.settings-wrap { max-width: 520px; }
+.settings-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.settings-title { font-size: 19px; margin: 0; }
+.settings-section { margin-bottom: 14px; }
+.settings-section h3 { margin: 0 0 4px; font-size: 14.5px; }
+.settings-note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+
+/* ---- photo de profil ---- */
+.photo-row { display: flex; align-items: center; gap: 16px; margin-top: 10px; flex-wrap: wrap; }
+.photo-actions { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 160px; }
+.photo-actions .btn { width: 100%; margin-top: 0; }
+.photo-upload-label { text-align: center; display: block; cursor: pointer; }
+
+/* ---- décorations / thèmes : grille de chips ---- */
+.chip-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; margin-top: 12px; }
+.chip {
+  background: var(--bg2); border: 1px solid var(--panel-border); border-radius: 12px;
+  padding: 12px 10px; text-align: center; cursor: pointer; font-size: 12.5px; font-weight: 600;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.chip .chip-swatch { width: 34px; height: 34px; border-radius: 10px; }
+.chip.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.chip.locked { opacity: .45; cursor: not-allowed; }
+.chip .chip-label { color: var(--text); }
+.chip .chip-sub { color: var(--muted); font-size: 10.5px; }
+
+/* aperçus de thèmes dans la grille */
+.theme-swatch-classique { background: var(--accent-grad); }
+.theme-swatch-sombre { background: #000; border: 1px solid #333; }
+.theme-swatch-clair { background: #fff; border: 1px solid #ccc; }
+.theme-swatch-trophee-or { background: linear-gradient(135deg,#f5d76e,#c9971f); }
+.theme-swatch-trophee-argent { background: linear-gradient(135deg,#e4e9f0,#9aa7ba); }
+.theme-swatch-trophee-bronze { background: linear-gradient(135deg,#d98a54,#8a4a20); }
+
+/* ---- recherche / fiche joueur ---- */
+.player-card { display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 12px; background: var(--bg2); border: 1px solid var(--panel-border); border-radius: 12px; }
+.player-card-info { flex: 1; }
+.player-tags { margin-top: 10px; font-size: 12px; color: var(--muted); }
+.manage-grid-label { font-size: 11.5px; font-weight: 800; color: var(--muted); text-transform: uppercase; margin: 14px 0 6px; }
+
+/* ---- zone de danger ---- */
+.danger-zone { border-color: rgba(239,90,111,.35); }
+.btn-danger { background: rgba(239,90,111,.15); color: var(--danger); border: 1px solid rgba(239,90,111,.4); margin-top: 10px; }
+.btn-danger:hover { background: rgba(239,90,111,.25); }
+.btn-danger:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ---- modales ---- */
+.overlay {
+  position: fixed; inset: 0; background: rgba(5,6,10,.65); z-index: 70;
+  display: none; align-items: center; justify-content: center; padding: 18px;
+}
+.overlay.show { display: flex; }
+.modal { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 18px; padding: 20px; max-width: 380px; width: 100%; }
+.modal h3 { margin: 0 0 8px; }
+.modal p { color: var(--muted); font-size: 13.5px; margin: 0 0 12px; }
+.modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+.modal-actions .btn { flex: 1; margin-top: 0; }
+.delete-code { color: var(--accent2); font-size: 20px; letter-spacing: 4px; }
+#delete-code-input { text-align: center; letter-spacing: 6px; font-size: 18px; margin-top: 6px; }
+
+/* ============================================================ */
+/* Thèmes — appliqués via body[data-theme="..."]                */
+/* ============================================================ */
+body[data-theme="sombre"] {
+  --bg: #000000; --bg2: #0c0c0c; --panel: #111111; --panel-border: #262626;
+  background: #000;
+}
+body[data-theme="clair"] {
+  --bg: #f4f5f8; --bg2: #ffffff; --panel: #ffffff; --panel-border: #e2e5ec;
+  --text: #14161c; --muted: #6b7280;
+  background: radial-gradient(circle at top, #ffffff 0%, #eef0f5 60%);
+}
+body[data-theme="trophee-or"] {
+  --accent: #c9971f; --accent2: #f5d76e; --accent-grad: linear-gradient(135deg,#f5d76e,#c9971f);
+}
+body[data-theme="trophee-argent"] {
+  --accent: #6b7a92; --accent2: #c9d3e0; --accent-grad: linear-gradient(135deg,#e4e9f0,#8a97ab);
+}
+body[data-theme="trophee-bronze"] {
+  --accent: #8a4a20; --accent2: #d98a54; --accent-grad: linear-gradient(135deg,#d98a54,#8a4a20);
+}

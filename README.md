@@ -1,90 +1,89 @@
-# Car'Tech Arena — Système de comptes (v1)
+# Car'Tech Arena — Comptes + Paramètres (v2)
 
-Cette première version met en place la brique de base : création de compte,
-connexion, et distinction entre les comptes **joueur** et **organisateur**
-(le tien). Pas encore de système de défis — ça viendra à l'étape suivante,
-une fois que les comptes fonctionnent bien.
+Cette version ajoute l'écran **Paramètres** au système de comptes déjà en
+place : changer de pseudo, changer de mot de passe, changer de photo de
+profil, débloquer des décorations et des thèmes (attribués par
+l'organisateur), voir le profil d'un autre joueur, et supprimer son compte.
+Toujours pas de système de défis — ça reste la prochaine étape.
 
 ## Comment ça marche
 
-C'est un site 100% statique : `index.html` + `css/style.css` + `js/app.js`.
-Pas de build, pas de `npm install`, pas de serveur à écrire — le SDK Firebase
-est chargé directement depuis le CDN de Google dans le navigateur. Tu peux
-ouvrir `index.html` n'importe où (Vercel, Firebase Hosting, GitHub Pages...),
-tant que la configuration Firebase ci-dessous est renseignée.
+Toujours un site 100% statique, sans build ni `npm install` : le SDK Firebase
+est chargé depuis son CDN directement dans le navigateur.
 
-## Mise en place (à faire une seule fois)
-
-1. **Crée un nouveau projet Firebase** (séparé de ta caisse) sur
-   [console.firebase.google.com](https://console.firebase.google.com).
-
-2. **Ajoute une application Web** : dans "Paramètres du projet" > "Général" >
-   "Vos applications", clique l'icône `</>`, donne-lui un nom
-   (ex. `cartech-arena-web`). Firebase t'affiche un objet `firebaseConfig`.
-
-3. **Colle ces valeurs** dans `js/firebase-config.js`, à la place des
-   `"REMPLACE_MOI"`.
-
-4. **Active les connexions** : Build > Authentication > Sign-in method >
-   active **Email/Password** et **Google**.
-
-5. **Crée la base Firestore** : Build > Firestore Database > Créer une base
-   (choisis "mode production").
-
-6. **Colle les règles de sécurité** : dans Firestore Database > onglet
-   "Règles", remplace tout le contenu par celui de `firestore.rules`
-   (à la racine de ce dossier), puis clique "Publier".
-
-7. Dans `js/firebase-config.js`, vérifie que `ORGANIZER_EMAIL` correspond bien
-   à l'adresse email avec laquelle **toi** tu vas créer ton compte — c'est
-   cette adresse qui recevra automatiquement le rôle "organisateur".
-
-## Tester en local
-
-Comme le site utilise des modules JavaScript (`type="module"`), les
-navigateurs refusent de les charger si tu ouvres `index.html` directement en
-double-cliquant dessus (erreur CORS). Il faut le servir via un petit serveur
-local. Depuis ce dossier :
-
-```bash
-npx serve .
+```
+index.html
+css/style.css
+js/firebase-config.js   <- tes clés Firebase (déjà remplies)
+js/firebase-init.js     <- initialise Firebase une seule fois, partagé
+js/catalog.js           <- liste des décorations et des thèmes disponibles
+js/app.js               <- inscription / connexion / rôle
+js/settings.js          <- tout l'écran Paramètres
+firestore.rules         <- règles de sécurité à coller dans Firebase
 ```
 
-puis ouvre l'adresse affichée (en général `http://localhost:3000`).
+Petite précision sur le stockage des photos : comme le plan gratuit Firebase
+(Spark) ne permet plus d'utiliser "Cloud Storage" sans activer la
+facturation, les photos de profil sont stockées directement dans Firestore,
+sous forme d'image compressée (recadrée en 512×512 et convertie en JPEG
+léger). Ça reste largement dans le 1 Go gratuit de Firestore et ça évite
+d'avoir à activer un mode payant.
 
-## Déployer
+## Mise à jour depuis la v1 — à faire une seule fois
 
-Le plus simple avec ta stack actuelle (GitHub + Vercel) :
+1. **Republie les fichiers** : sur ton dépôt GitHub, remplace tous les
+   fichiers par ceux de ce dossier (glisse-dépose tout par-dessus, "Commit
+   changes" — GitHub écrase les fichiers existants et ajoute les nouveaux).
+   `js/firebase-config.js` contient déjà tes vraies clés et ton email
+   organisateur, pas besoin d'y retoucher.
 
-1. Pousse ce dossier dans un nouveau dépôt GitHub.
-2. Sur [vercel.com](https://vercel.com), "Add New Project" > importe ce
-   dépôt. Comme c'est un site statique, Vercel n'a besoin d'aucune
-   configuration de build particulière (laisse les champs par défaut, ou
-   choisis "Other" comme framework).
-3. Une fois déployé, ouvre l'URL Vercel et crée ton compte organisateur avec
-   ton email.
+2. **Republie les règles Firestore** : Firebase Console > Firestore Database
+   > onglet "Règles" > remplace tout le contenu par celui de
+   `firestore.rules` (celui-ci est différent de la v1 : il autorise
+   maintenant la suppression de compte et la gestion des décorations/thèmes)
+   > "Publier".
 
-## Ce qui est déjà fait
+3. Vercel redéploiera automatiquement dès que GitHub reçoit les nouveaux
+   fichiers.
 
-- Création de compte par email + mot de passe, avec un pseudo.
-- Connexion par email + mot de passe.
-- Connexion avec Google (crée aussi un compte automatiquement au premier
-  essai).
-- Un profil Firestore (`users/{uid}`) est créé pour chaque compte, avec :
-  `pseudo`, `email`, `role` (`joueur` ou `organisateur`), `points`, `wins`,
-  `losses`.
-- Ton adresse email obtient automatiquement le rôle `organisateur`, vérifié
-  à la fois côté site ET côté règles de sécurité Firestore (donc impossible à
-  falsifier pour un joueur).
-- Écran "Espace organisateur" qui n'apparaît que sur ton compte — pour
-  l'instant vide, prêt à accueillir les futurs outils (gestion des défis,
-  validation des litiges, etc.).
+C'est tout — pas de nouveau projet Firebase à créer, pas de nouvelle
+autorisation à donner. Les 2 comptes déjà créés (le tien et celui de test)
+continueront de fonctionner normalement ; ils recevront juste
+automatiquement les nouveaux champs (décorations, thème) dès leur première
+connexion après la mise à jour.
+
+## Ce qui est ajouté dans cette version
+
+- **Pseudo** : modifiable à tout moment depuis Paramètres.
+- **Mot de passe** : modifiable (redemande le mot de passe actuel par
+  sécurité). Masqué automatiquement pour les comptes connectés uniquement
+  via Google (rien à gérer dans ce cas).
+- **Photo de profil** : import d'une image, recadrage carré + redimension
+  512×512 + compression automatique côté navigateur.
+- **Décorations de photo de profil** : anneaux visuels autour de l'avatar
+  (Payer / Tournoi / Compète / Événement). Un joueur ne peut choisir que
+  parmi celles qu'il possède déjà — **seul le compte organisateur peut en
+  débloquer** pour un joueur (via "Voir le profil d'un joueur").
+- **Thèmes** : Classique / Sombre / Clair débloqués pour tout le monde dès
+  la création du compte ; les thèmes "Trophée" (Or/Argent/Bronze) sont
+  verrouillés et débloqués uniquement par l'organisateur.
+- **Voir le profil d'un joueur** : recherche par pseudo exact, affiche sa
+  photo, son rôle, ses stats, et un espace "Tags" (vide pour l'instant,
+  prévu pour plus tard). Si tu es organisateur, un panneau supplémentaire
+  apparaît pour attribuer/retirer décorations et thèmes à ce joueur.
+- **Suppression de compte** : confirmation en 2 étapes (avertissement, puis
+  recopie d'un code à 4 chiffres généré aléatoirement) + reconfirmation du
+  mot de passe (ou de Google) avant suppression réelle et définitive.
+- Les règles de sécurité Firestore ont été mises à jour en conséquence :
+  un joueur ne peut jamais s'attribuer lui-même une décoration/un thème
+  verrouillé, ni changer son propre rôle ou ses points ; seul l'organisateur
+  peut le faire pour les autres comptes.
 
 ## Ce qui n'est pas encore fait (prochaine étape)
 
-- Le système de défis entre joueurs (lancer un défi, accepter, déclarer un
-  résultat, classement général) — celui qu'on avait maquetté. Il se
-  branchera sur ces mêmes comptes.
-- Les outils spécifiques à l'organisateur (par ex. trancher un litige sur un
-  résultat contesté, ajouter d'autres organisateurs, gérer la liste des
-  jeux disponibles).
+- Le système de défis entre joueurs (lancer un défi, accepter, choisir le
+  jeu et le format, déclarer un résultat avec double confirmation,
+  classement général) — celui qu'on avait maquetté au tout début. Il se
+  branchera sur ces mêmes comptes et profils.
+- Les "Tags" affichés sur le profil d'un joueur (actuellement un
+  emplacement vide, prêt à être rempli plus tard).

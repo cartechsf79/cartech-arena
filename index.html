@@ -82,12 +82,13 @@
 
       <div class="card">
         <div class="profile-head">
-          <div class="profile-avatar" id="profile-avatar">🙂</div>
-          <div>
+          <div class="avatar-shell" id="profile-avatar"><div class="avatar-inner">🙂</div></div>
+          <div style="flex:1;">
             <div id="profile-pseudo">—</div>
             <div id="profile-email">—</div>
             <span class="badge" id="role-badge">—</span>
           </div>
+          <button class="icon-btn" id="btn-open-settings" type="button" title="Paramètres">⚙️</button>
         </div>
 
         <div class="stat-row">
@@ -109,8 +110,133 @@
     </div>
   </div>
 
+  <!-- ============================================================ -->
+  <!-- ÉCRAN : Paramètres -->
+  <!-- ============================================================ -->
+  <div class="view" id="view-settings">
+    <div class="app-wrap settings-wrap">
+      <div class="settings-header">
+        <button class="icon-btn" id="btn-close-settings" type="button" title="Retour">←</button>
+        <h1 class="settings-title">Paramètres</h1>
+      </div>
+
+      <!-- Pseudo -->
+      <div class="card settings-section">
+        <h3>Pseudo</h3>
+        <form id="form-change-pseudo">
+          <label for="settings-pseudo">Ton pseudo</label>
+          <input type="text" id="settings-pseudo" required maxlength="24">
+          <button class="btn btn-primary" type="submit" id="btn-save-pseudo">Enregistrer le pseudo</button>
+        </form>
+      </div>
+
+      <!-- Mot de passe -->
+      <div class="card settings-section" id="section-password">
+        <h3>Mot de passe</h3>
+        <form id="form-change-password">
+          <label for="settings-current-password">Mot de passe actuel</label>
+          <input type="password" id="settings-current-password" autocomplete="current-password" required>
+
+          <label for="settings-new-password">Nouveau mot de passe</label>
+          <input type="password" id="settings-new-password" autocomplete="new-password" minlength="6" required>
+
+          <label for="settings-confirm-password">Confirmer le nouveau mot de passe</label>
+          <input type="password" id="settings-confirm-password" autocomplete="new-password" minlength="6" required>
+
+          <button class="btn btn-primary" type="submit" id="btn-save-password">Changer le mot de passe</button>
+        </form>
+        <p class="settings-note" id="note-google-only" style="display:none;">
+          Ton compte est connecté via Google — il n'y a pas de mot de passe à gérer ici.
+        </p>
+      </div>
+
+      <!-- Photo de profil -->
+      <div class="card settings-section">
+        <h3>Photo de profil</h3>
+        <div class="photo-row">
+          <div class="avatar-shell" id="settings-avatar-preview"><div class="avatar-inner">🙂</div></div>
+          <div class="photo-actions">
+            <label class="btn btn-ghost photo-upload-label" for="settings-photo-input">Choisir une image</label>
+            <input type="file" id="settings-photo-input" accept="image/*" style="display:none;">
+            <button class="btn btn-primary" type="button" id="btn-save-photo" disabled>Enregistrer la photo</button>
+            <button class="btn btn-ghost" type="button" id="btn-remove-photo">Retirer la photo</button>
+          </div>
+        </div>
+        <p class="settings-note">L'image sera recadrée et redimensionnée automatiquement en carré 512×512.</p>
+        <canvas id="photo-canvas" width="512" height="512" style="display:none;"></canvas>
+      </div>
+
+      <!-- Décorations -->
+      <div class="card settings-section">
+        <h3>Décoration de photo de profil</h3>
+        <p class="settings-note">Débloquées uniquement par l'organisateur (récompenses de tournoi, d'événement…).</p>
+        <div class="chip-grid" id="decorations-grid"></div>
+      </div>
+
+      <!-- Thème -->
+      <div class="card settings-section">
+        <h3>Thème</h3>
+        <p class="settings-note">Les thèmes "Trophée" sont débloqués par l'organisateur en récompense de concours.</p>
+        <div class="chip-grid" id="themes-grid"></div>
+      </div>
+
+      <!-- Rechercher un joueur / voir un profil -->
+      <div class="card settings-section">
+        <h3>Voir le profil d'un joueur</h3>
+        <form id="form-search-player">
+          <input type="text" id="search-player-input" placeholder="Pseudo exact du joueur">
+          <button class="btn btn-primary" type="submit" style="margin-top:10px;">Rechercher</button>
+        </form>
+        <div id="search-player-result"></div>
+      </div>
+
+      <!-- Zone de danger -->
+      <div class="card settings-section danger-zone">
+        <h3>Zone de danger</h3>
+        <p class="settings-note">Supprimer ton compte est définitif : profil, points et historique seront perdus.</p>
+        <button class="btn btn-danger" type="button" id="btn-delete-account">Supprimer mon compte</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modale : confirmation de suppression, étape 1 -->
+  <div class="overlay" id="overlay-delete-step1">
+    <div class="modal">
+      <h3>Supprimer ton compte ?</h3>
+      <p>Cette action est <b>définitive</b>. Ton profil, tes points, tes décorations et
+        ton historique seront supprimés pour toujours.</p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" type="button" id="btn-delete-cancel-1">Annuler</button>
+        <button class="btn btn-danger" type="button" id="btn-delete-continue">Continuer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modale : confirmation de suppression, étape 2 (code + reauth) -->
+  <div class="overlay" id="overlay-delete-step2">
+    <div class="modal">
+      <h3>Confirme la suppression</h3>
+      <p>Recopie ce code pour confirmer : <b class="delete-code" id="delete-code-display">0000</b></p>
+      <input type="text" id="delete-code-input" placeholder="Recopie le code ici" maxlength="4">
+
+      <div id="delete-reauth-password-wrap">
+        <label for="delete-reauth-password">Confirme ton mot de passe</label>
+        <input type="password" id="delete-reauth-password" autocomplete="current-password">
+      </div>
+      <button class="btn btn-google" type="button" id="btn-delete-reauth-google" style="display:none; margin-top:10px;">
+        <span>🔵</span> Confirmer avec Google
+      </button>
+
+      <div class="modal-actions">
+        <button class="btn btn-ghost" type="button" id="btn-delete-cancel-2">Annuler</button>
+        <button class="btn btn-danger" type="button" id="btn-delete-confirm" disabled>Confirmer la suppression</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 
   <script type="module" src="js/app.js"></script>
+  <script type="module" src="js/settings.js"></script>
 </body>
 </html>

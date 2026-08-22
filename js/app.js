@@ -1,14 +1,7 @@
 // ============================================================================
 // Car'Tech Arena — logique de compte (inscription / connexion / rôles)
 // ============================================================================
-// Ce fichier utilise le SDK Firebase (v10, "modular") chargé directement
-// depuis le CDN officiel de Google — pas besoin de npm install, pas besoin
-// de build : ces fichiers fonctionnent tels quels dans un navigateur.
-// ============================================================================
-
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import {
-  getAuth,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   GoogleAuthProvider,
@@ -18,25 +11,32 @@ import {
   updateProfile,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
-  getFirestore,
   doc,
   getDoc,
   setDoc,
   serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
-import { firebaseConfig, ORGANIZER_EMAIL } from "./firebase-config.js";
+import { auth, db, ORGANIZER_EMAIL } from "./firebase-init.js";
+import { DEFAULT_OWNED_THEMES, findDecoration, applyTheme } from "./catalog.js";
 
-// ---------------------------------------------------------------------------
-// Initialisation
-// ---------------------------------------------------------------------------
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+export const $ = (sel) => document.querySelector(sel);
 
-const $ = (sel) => document.querySelector(sel);
+let currentProfile = null; // { pseudo, email, role, points, wins, losses, photoDataUrl, decorations, theme }
+let currentUid = null;
 
-let currentProfile = null; // { pseudo, email, role, points, wins, losses }
+export function getCurrentProfile() {
+  return currentProfile;
+}
+export function getCurrentUid() {
+  return currentUid;
+}
+
+function broadcastProfile() {
+  document.dispatchEvent(
+    new CustomEvent("cartech:profile", { detail: { uid: currentUid, profile: currentProfile } })
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Messages d'erreur Firebase traduits en français
@@ -50,14 +50,16 @@ const ERROR_MESSAGES = {
   "auth/invalid-credential": "Email ou mot de passe incorrect.",
   "auth/too-many-requests": "Trop de tentatives. Réessaie dans quelques minutes.",
   "auth/popup-closed-by-user": "Connexion Google annulée.",
+  "auth/unauthorized-domain": "Ce site n'est pas encore autorisé pour Google (à ajouter dans Firebase > Authentication > Paramètres > Domaines autorisés).",
   "auth/network-request-failed": "Problème de connexion réseau. Réessaie.",
+  "auth/requires-recent-login": "Pour ta sécurité, reconnecte-toi puis réessaie cette action.",
 };
 
-function friendlyError(err) {
+export function friendlyError(err) {
   return ERROR_MESSAGES[err?.code] || "Une erreur est survenue. Réessaie.";
 }
 
-function showToast(msg, isError = false) {
+export function showToast(msg, isError = false) {
   const t = $("#toast");
   t.textContent = msg;
   t.classList.toggle("toast-error", isError);
@@ -81,24 +83,36 @@ async function ensureUserProfile(user, pseudoFromSignup) {
   const snap = await getDoc(ref);
 
   if (snap.exists()) {
-    return snap.data();
+    const data = snap.data();
+    // Auto-réparation : complète les champs manquants pour les comptes créés
+    // avant l'ajout des paramètres (photo, décorations, thème…), sans jamais
+    // toucher au rôle, aux points ni aux listes déjà débloquées.
+    const patch = {};
+    if (!data.decorations) patch.decorations = { owned: [], active: null };
+    if (!data.theme) patch.theme = { owned: DEFAULT_OWNED_THEMES, active: "classique" };
+    if (!("photoDataUrl" in data)) patch.photoDataUrl = null;
+    if (!data.pseudoLower) patch.pseudoLower = (data.pseudo || "").toLowerCase();
+    if (Object.keys(patch).length) {
+      await setDoc(ref, patch, { merge: true });
+      return { ...data, ...patch };
+    }
+    return data;
   }
 
-  // Premier login : on crée le profil. Le rôle "organisateur" n'est accordé
-  // que si l'email correspond à ORGANIZER_EMAIL — et de toute façon, les
-  // règles de sécurité Firestore (firestore.rules) revérifient cette
-  // condition côté serveur, donc un client trafiqué ne peut pas se
-  // l'attribuer lui-même.
-  const isOrganizer =
-    (user.email || "").toLowerCase() === ORGANIZER_EMAIL.toLowerCase();
+  const isOrganizer = (user.email || "").toLowerCase() === ORGANIZER_EMAIL.toLowerCase();
+  const pseudo = pseudoFromSignup || user.displayName || (user.email || "").split("@")[0];
 
   const profile = {
-    pseudo: pseudoFromSignup || user.displayName || (user.email || "").split("@")[0],
+    pseudo,
+    pseudoLower: pseudo.toLowerCase(),
     email: user.email,
     role: isOrganizer ? "organisateur" : "joueur",
     points: 0,
     wins: 0,
     losses: 0,
+    photoDataUrl: null,
+    decorations: { owned: [], active: null },
+    theme: { owned: DEFAULT_OWNED_THEMES, active: "classique" },
     createdAt: serverTimestamp(),
   };
 
@@ -168,10 +182,37 @@ async function handleLogout() {
 // ---------------------------------------------------------------------------
 // Affichage : bascule entre écran de connexion et appli, selon l'état auth
 // ---------------------------------------------------------------------------
-function renderProfile(profile) {
+export function renderAvatar(container, profile, size = 54) {
+  container.innerHTML = "";
+  container.style.width = size + "px";
+  container.style.height = size + "px";
+  container.className = "avatar-shell";
+
+  const inner = document.createElement("div");
+  inner.className = "avatar-inner";
+  if (profile?.photoDataUrl) {
+    inner.style.backgroundImage = `url("${profile.photoDataUrl}")`;
+    inner.style.backgroundSize = "cover";
+    inner.style.backgroundPosition = "center";
+  } else {
+    inner.textContent = "🙂";
+  }
+  container.appendChild(inner);
+
+  const decoId = profile?.decorations?.active;
+  const deco = decoId ? findDecoration(decoId) : null;
+  if (deco) {
+    container.classList.add("has-deco", deco.css);
+  }
+}
+
+export function renderProfile(profile) {
   currentProfile = profile;
+  broadcastProfile();
+
   $("#profile-pseudo").textContent = profile.pseudo;
   $("#profile-email").textContent = profile.email;
+  renderAvatar($("#profile-avatar"), profile, 54);
 
   const badge = $("#role-badge");
   const isOrganizer = profile.role === "organisateur";
@@ -183,20 +224,30 @@ function renderProfile(profile) {
   $("#stat-wins").textContent = profile.wins ?? 0;
   $("#stat-losses").textContent = profile.losses ?? 0;
 
-  // Le lien / la zone "Organisateur" n'apparaît que pour ton compte.
   document.querySelectorAll(".organizer-only").forEach((el) => {
     el.style.display = isOrganizer ? "" : "none";
   });
+
+  applyTheme(profile?.theme?.active || "classique");
 }
 
 function showAuthScreen() {
   $("#view-auth").classList.add("active");
   $("#view-app").classList.remove("active");
+  $("#view-settings").classList.remove("active");
+  applyTheme("classique");
 }
 
 function showAppScreen() {
   $("#view-auth").classList.remove("active");
   $("#view-app").classList.add("active");
+  $("#view-settings").classList.remove("active");
+}
+
+export function showSettingsScreen() {
+  $("#view-auth").classList.remove("active");
+  $("#view-app").classList.remove("active");
+  $("#view-settings").classList.add("active");
 }
 
 // ---------------------------------------------------------------------------
@@ -205,9 +256,12 @@ function showAppScreen() {
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
     currentProfile = null;
+    currentUid = null;
+    broadcastProfile();
     showAuthScreen();
     return;
   }
+  currentUid = user.uid;
   try {
     const profile = await ensureUserProfile(user);
     renderProfile(profile);
@@ -238,6 +292,8 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#btn-google-signup").addEventListener("click", handleGoogle);
   $("#btn-google-login").addEventListener("click", handleGoogle);
   $("#btn-logout").addEventListener("click", handleLogout);
+  $("#btn-open-settings").addEventListener("click", showSettingsScreen);
+  $("#btn-close-settings").addEventListener("click", showAppScreen);
 
   document.querySelectorAll(".auth-tab").forEach((el) => {
     el.addEventListener("click", () => switchAuthTab(el.dataset.tab));
