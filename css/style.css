@@ -204,13 +204,14 @@ input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 }
 .dd-row-avatar { width: 38px; height: 38px; flex-shrink: 0; border-radius: 12px; }
 .dd-row-name { flex: 1; font-weight: 700; font-size: 13.5px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.dd-row-actions { display: flex; gap: 6px; }
+.dd-row-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .btn-mini {
   border: none; cursor: pointer; font-weight: 700; font-size: 12px;
   padding: 8px 12px; border-radius: 9px; background: var(--accent-grad); color: #fff;
 }
 .btn-mini-ok { background: rgba(62,207,142,.18); color: var(--success); }
 .btn-mini-no { background: rgba(239,90,111,.18); color: var(--danger); }
+.btn-mini-ghost { background: transparent; border: 1px solid var(--panel-border); color: var(--text); }
 .dd-pill {
   display: inline-block; font-size: 10.5px; font-weight: 800; padding: 3px 9px;
   border-radius: 999px; background: var(--bg); border: 1px solid var(--panel-border); color: var(--muted);

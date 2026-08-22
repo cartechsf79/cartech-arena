@@ -16,6 +16,7 @@ import {
 
 import { db } from "./firebase-init.js";
 import { $, getCurrentProfile, getCurrentUid, showToast, friendlyError, renderAvatar } from "./app.js";
+import { showPlayerProfileScreen } from "./settings.js";
 import { GAMES, FORMATS, findFormat } from "./catalog.js";
 
 // Toute action Firestore peut échouer (règles de sécurité, réseau...) — on
@@ -242,6 +243,7 @@ function renderOrganizerPanel() {
   }
   el.style.display = "";
 
+  const preserved = captureInputs(["dd-endtime"]);
   const isOpen = session?.status === "ouvert";
   const pending = participants.filter((p) => p.status === "attente_validation");
   const roster = participants.filter((p) =>
@@ -316,6 +318,35 @@ function renderOrganizerPanel() {
       if (holder) renderAvatar(holder, p, 38);
     });
   }
+
+  restoreInputs(preserved);
+}
+
+// ---------------------------------------------------------------------------
+// Préservation des champs en cours de saisie face aux mises à jour en direct
+// ---------------------------------------------------------------------------
+// Les écrans se reconstruisent entièrement (innerHTML) à chaque mise à jour
+// venant de Firestore — y compris pendant qu'un joueur est en train de
+// remplir un formulaire (ex: l'adversaire envoie son résultat pendant qu'on
+// écrit le nôtre). Sans ça, la saisie en cours serait effacée et il faudrait
+// tout retaper. On capture donc les valeurs juste avant de reconstruire le
+// HTML, puis on les réinjecte juste après si les mêmes champs réapparaissent.
+function captureInputs(ids) {
+  const vals = {};
+  ids.forEach((id) => {
+    const node = document.getElementById(id);
+    if (!node) return;
+    vals[id] = node.type === "checkbox" ? node.checked : node.value;
+  });
+  return vals;
+}
+function restoreInputs(vals) {
+  Object.entries(vals).forEach(([id, val]) => {
+    const node = document.getElementById(id);
+    if (!node) return;
+    if (node.type === "checkbox") node.checked = val;
+    else node.value = val;
+  });
 }
 
 const STATUS_LABELS = {
@@ -368,6 +399,8 @@ function renderPlayerArea() {
   const activeDuel = myActiveDuel();
   const incoming = myIncomingProposals();
 
+  const preserved = captureInputs(["dd-my-score", "dd-opp-score", "dd-i-won", "dd-propose-game", "dd-propose-format"]);
+
   let html = "";
 
   if (activeDuel) {
@@ -384,14 +417,17 @@ function renderPlayerArea() {
   wireAvailableListEvents();
   wireIncomingProposalEvents(incoming[0]);
   wireActiveDuelEvents(activeDuel);
+  restoreInputs(preserved);
+}
+
+function availableOthers() {
+  const busy = activeDuelUids();
+  const uid = myUid();
+  return participants.filter((p) => p.status === "disponible" && p.id !== uid && !busy.has(p.id));
 }
 
 function renderAvailableList() {
-  const busy = activeDuelUids();
-  const uid = myUid();
-  const others = participants.filter(
-    (p) => p.status === "disponible" && p.id !== uid && !busy.has(p.id)
-  );
+  const others = availableOthers();
 
   let html = `<h3>Joueurs disponibles</h3>`;
   if (!others.length) {
@@ -404,6 +440,7 @@ function renderAvailableList() {
         <div class="dd-row-avatar" data-avatar="${p.id}"></div>
         <div class="dd-row-name">${escapeHtml(p.pseudo)}</div>
         <div class="dd-row-actions">
+          <button class="btn-mini btn-mini-ghost" data-action="view-profile" data-uid="${p.id}">Voir profil</button>
           ${
             outgoing
               ? `<span class="dd-pill">⏳ en attente</span>`
@@ -499,7 +536,18 @@ function wireAvailableListEvents() {
       render();
     });
   });
+  document.querySelectorAll('[data-action="view-profile"]').forEach((btn) => {
+    btn.addEventListener("click", () => withErrorToast(() => showPlayerProfileScreen(btn.dataset.uid)));
+  });
   $("#dd-btn-send-proposal")?.addEventListener("click", () => withErrorToast(() => proposeDuel(proposingToUid)));
+
+  // Photos de profil des joueurs disponibles (pas encore affichées tant que
+  // ces lignes n'existent pas dans le DOM, d'où l'appel ici plutôt qu'au
+  // moment de générer le HTML).
+  availableOthers().forEach((p) => {
+    const holder = document.querySelector(`.dd-row[data-uid="${p.id}"] [data-avatar="${p.id}"]`);
+    if (holder) renderAvatar(holder, p, 40);
+  });
 }
 
 function wireIncomingProposalEvents(duel) {

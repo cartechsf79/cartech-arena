@@ -27,7 +27,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 import { auth, db, ORGANIZER_EMAIL } from "./firebase-init.js";
-import { $, showToast, friendlyError, getCurrentProfile, getCurrentUid, renderAvatar, renderProfile } from "./app.js";
+import { $, showToast, friendlyError, getCurrentProfile, getCurrentUid, renderAvatar, renderProfile, showSettingsScreen } from "./app.js";
 import { DECORATIONS, THEMES, findTheme, applyTheme } from "./catalog.js";
 
 const MAX_PHOTO_BYTES = 700_000; // marge de sécurité sous la limite de 1 Mo par document Firestore
@@ -296,6 +296,27 @@ async function handleSearchPlayer(e) {
     }
     const targetDoc = snap.docs[0];
     renderPlayerCard(targetDoc.id, targetDoc.data());
+  } catch (err) {
+    showToast(friendlyError(err), true);
+  }
+}
+
+// Ouvre directement la fiche d'un joueur précis (utilisé notamment par le
+// bouton "Voir profil" du Duel du jour) sans passer par la recherche par
+// pseudo — on va chercher son profil complet (points, rôle...) car les
+// fiches "participant" du Duel du jour ne contiennent pas ces infos.
+export async function showPlayerProfileScreen(targetUid) {
+  showSettingsScreen();
+  populateSettingsScreen();
+  try {
+    const snap = await getDoc(doc(db, "users", targetUid));
+    if (!snap.exists()) {
+      showToast("Profil introuvable.", true);
+      return;
+    }
+    $("#search-player-input").value = snap.data().pseudo || "";
+    renderPlayerCard(targetUid, snap.data());
+    $("#search-player-result")?.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (err) {
     showToast(friendlyError(err), true);
   }
