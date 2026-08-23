@@ -16,6 +16,7 @@ const dailyParticipantsCol = collection(db, "dailySession", "current", "particip
 const eventsCol = collection(db, "events");
 
 let usersAll = [];
+let searchTerm = "";
 let dailySessionOpen = false;
 let dailyParticipants = [];
 let activeEventId = null;
@@ -74,12 +75,19 @@ function render() {
   const order = { disponible: 0, en_combat: 1, inactif: 2 };
   rows.sort((a, b) => order[a.status] - order[b.status] || (a.pseudo || "").localeCompare(b.pseudo || ""));
 
+  const term = searchTerm.trim().toLowerCase();
+  const filtered = term ? rows.filter((p) => (p.pseudo || "").toLowerCase().includes(term)) : rows;
+
   container.innerHTML = "";
   if (!rows.length) {
     container.innerHTML = `<p class="settings-note">Aucun joueur pour l'instant.</p>`;
     return;
   }
-  rows.forEach((p) => {
+  if (!filtered.length) {
+    container.innerHTML = `<p class="settings-note">Aucun joueur ne correspond à « ${escapeHtml(searchTerm.trim())} ».</p>`;
+    return;
+  }
+  filtered.forEach((p) => {
     const row = document.createElement("div");
     row.className = `home-player-row status-${p.status}`;
     row.innerHTML = `
@@ -118,6 +126,14 @@ function attachEventMatchesListener() {
 export function startHomePlayersListener() {
   if (started) return;
   started = true;
+  const searchInput = document.getElementById("home-players-search");
+  if (searchInput && !searchInput.dataset.wired) {
+    searchInput.dataset.wired = "1";
+    searchInput.addEventListener("input", () => {
+      searchTerm = searchInput.value;
+      render();
+    });
+  }
   unsubUsers = onSnapshot(usersCol, (snap) => {
     usersAll = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     render();
@@ -145,6 +161,9 @@ export function stopHomePlayersListener() {
   [unsubUsers, unsubDailySession, unsubDaily, unsubEvents, unsubMatches].forEach((u) => u && u());
   unsubUsers = unsubDailySession = unsubDaily = unsubEvents = unsubMatches = null;
   usersAll = [];
+  searchTerm = "";
+  const searchInput = document.getElementById("home-players-search");
+  if (searchInput) searchInput.value = "";
   dailySessionOpen = false;
   dailyParticipants = [];
   eventMatches = [];

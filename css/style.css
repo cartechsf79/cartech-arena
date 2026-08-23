@@ -329,3 +329,13 @@ body[data-theme="trophee-bronze"] {
 .home-player-row.status-disponible .home-player-dot { background: var(--success); box-shadow: 0 0 6px rgba(62,207,142,.6); }
 .home-player-row.status-en_combat .home-player-dot { background: var(--danger); box-shadow: 0 0 6px rgba(239,90,111,.6); }
 .home-player-status-label { margin-left: 6px; }
+
+/* ---- bandeau "saison en cours" (écran d'accueil) ---- */
+.season-banner {
+  background: rgba(245,185,66,.1); border: 1px solid rgba(245,185,66,.35);
+  border-radius: 12px; padding: 10px 14px; margin: 0 0 14px; font-size: 13px; color: var(--text);
+}
+
+/* ---- classement de saison ---- */
+.season-row-me { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; background: rgba(139,92,246,.08); }
+.season-rank { flex: 0 0 auto; font-weight: 800; color: var(--muted); min-width: 30px; }

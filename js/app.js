@@ -21,6 +21,7 @@ import { auth, db, ORGANIZER_EMAIL } from "./firebase-init.js";
 import { DEFAULT_OWNED_THEMES } from "./catalog.js";
 import { startLiveCatalogs, stopLiveCatalogs, findAnyDecoration, findAnyTag, applyThemeLive, contrastTextColor } from "./live-catalog.js";
 import { startHomePlayersListener, stopHomePlayersListener } from "./home-players.js";
+import { startSeasonBannerListener, stopSeasonBannerListener } from "./season.js";
 
 export const $ = (sel) => document.querySelector(sel);
 
@@ -375,6 +376,7 @@ onAuthStateChanged(auth, async (user) => {
     currentUid = null;
     stopLiveCatalogs();
     stopHomePlayersListener();
+    stopSeasonBannerListener();
     broadcastProfile();
     showAuthScreen();
     return;
@@ -391,6 +393,10 @@ onAuthStateChanged(auth, async (user) => {
     // Liste des joueurs de l'écran d'accueil (disponible / en combat /
     // inactif) : démarrée dès la connexion elle aussi.
     startHomePlayersListener();
+    // Bandeau "saison en cours" de l'écran d'accueil : léger (juste la
+    // liste des saisons), démarré dès la connexion pour être toujours à
+    // jour même sans ouvrir l'écran Saison.
+    startSeasonBannerListener();
     const profile = await ensureUserProfile(user);
     renderProfile(profile);
     showAppScreen();

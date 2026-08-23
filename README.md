@@ -1,6 +1,24 @@
-# Car'Tech Arena — v7.1
+# Car'Tech Arena — v8
 
-**Corrige un bug réel signalé après la v7** : un joueur marqué "disponible"
+Cette version ajoute un vrai **système de saisons** (points gagnés via le
+Duel du jour, classement, tag automatique), confirme que fermer une
+session du Duel du jour **expulse maintenant tout le monde** (déjà
+corrigé en v7.1 — vérifié à nouveau ici, rien de plus à faire), et ajoute
+une **barre de recherche** en haut de la liste des joueurs de l'écran
+d'accueil. Voir "Nouveau dans cette version — Système de saisons" plus bas
+pour le détail complet des règles (points, plafond, tag, classement).
+
+**Republication des règles Firestore obligatoire pour cette version**
+(nouvelle collection `seasons`, et une règle très ciblée qui permet à un
+joueur de s'attribuer lui-même le tag de la saison en cours après son
+premier match — voir plus bas pour le détail de ce que ça autorise
+exactement).
+
+---
+
+## Historique — v7.1
+
+**Corrigeait un bug réel signalé après la v7** : un joueur marqué "disponible"
 pouvait rester affiché **"Disponible" indéfiniment** sur l'écran d'accueil
 de tout le monde — boutique fermée ou pas, déconnecté ou pas — si
 l'organisateur fermait la session du Duel du jour pendant que ce joueur
@@ -59,7 +77,8 @@ js/settings.js          <- tout l'écran Paramètres
 js/daily-duel.js        <- le Duel du jour
 js/event.js             <- l'Événement
 js/live-catalog.js      <- décorations/thèmes/tags/jeux créés par toi
-js/home-players.js      <- liste des joueurs de l'écran d'accueil
+js/home-players.js      <- liste des joueurs de l'écran d'accueil (+ recherche)
+js/season.js            <- système de saisons (points, classement, tag)
 firestore.rules         <- règles de sécurité à coller dans Firebase
 ```
 
@@ -344,6 +363,83 @@ En plus des couleurs, un thème personnalisé peut maintenant avoir une
 aperçu s'affiche immédiatement, avec un bouton pour la retirer si tu
 changes d'avis. L'image est automatiquement compressée pour rester légère.
 
+## Nouveau dans cette version — fermeture de session = tout le monde expulsé (rappel)
+
+Tu as redemandé ce comportement — bonne nouvelle, il était déjà en place
+depuis la v7.1 (voir "Historique — v7.1" plus haut) : fermer la session du
+Duel du jour repasse automatiquement tout le monde à "parti", donc à la
+prochaine session ouverte, chacun doit cliquer à nouveau sur "Demande à
+rejoindre" pour être re-validé par toi. Rien à faire de plus ici, c'est
+confirmé par un test automatisé dédié.
+
+## Nouveau dans cette version — recherche dans la liste des joueurs
+
+Un champ de recherche est apparu juste au-dessus de la liste **Joueurs**
+sur l'écran d'accueil : tape une partie d'un pseudo pour filtrer la liste
+en direct (insensible à la casse). Le filtre se combine avec le tri
+habituel (disponible / en combat / inactif) — vide le champ pour
+retrouver tout le monde.
+
+## Nouveau dans cette version — Système de saisons
+
+Un nouveau bouton **🏅 Saison actuelle** apparaît sur l'écran principal,
+pour tout le monde.
+
+### Programmer une saison (organisateur)
+
+Dans l'écran **Saison**, un panneau tout en haut (visible seulement pour
+toi) te permet de **programmer une saison** avec une date de début et une
+date de fin — pas besoin de l'ouvrir/la fermer manuellement, elle démarre
+et se termine toute seule à ces dates. Les saisons sont numérotées
+automatiquement (Saison 1, Saison 2…) et tu peux en supprimer une si
+besoin (bouton "Supprimer" dans la liste des saisons existantes).
+
+### Ce qui se passe pendant une saison en cours
+
+- **En haut de l'écran d'accueil**, un bandeau indique dans quelle saison
+  on se trouve et ses dates de début/fin — **rien n'est affiché s'il n'y a
+  pas de saison en cours**, comme demandé.
+- **Les points ne se gagnent que via le Duel du jour** (pas l'Événement) :
+  une **victoire rapporte 3 points**, une **défaite rapporte 1 point**, dès
+  qu'un duel est validé (les deux résultats concordent).
+- **Plafond de 15 points par journée** : passé ce plafond, le joueur peut
+  toujours jouer autant de duels qu'il veut ce jour-là, mais ne gagne plus
+  de points supplémentaires — en revanche, **son adversaire continue de
+  gagner des points normalement**, même si lui a atteint son plafond. Le
+  nombre de matchs/victoires/défaites affiché, lui, n'est jamais plafonné —
+  seuls les points le sont.
+- **Tag automatique** : dès qu'un joueur a joué (et terminé) au moins un
+  duel pendant la saison en cours, il reçoit automatiquement un tag
+  "Saison N" sur son profil (visible dans Paramètres &gt; Tags, à activer
+  comme n'importe quel autre tag) — pas besoin que tu l'attribues
+  toi-même.
+
+### Le bouton "🏅 Saison actuelle"
+
+Une fois dedans (que tu sois organisateur ou joueur), tu vois : tes points
+de la saison actuelle, ton nombre de matchs, tes victoires, tes défaites,
+et ta place actuelle au classement. En dessous, le **classement complet**
+de tous les joueurs (même ceux qui n'ont pas encore joué, à 0 point),
+trié du plus haut score au plus bas, avec **ta propre ligne surlignée**
+pour la retrouver facilement — chaque ligne affiche la photo de profil du
+joueur et un bouton **"Voir profil"**. Tout se met à jour en direct après
+chaque combat validé.
+
+### Comment les points sont calculés (transparence)
+
+Comme pour le reste de l'appli, rien n'est "stocké" tel quel : le
+classement d'une saison est **recalculé à chaque fois** à partir de
+l'historique des duels du jour déjà validés, jamais à partir d'un
+compteur qu'un client pourrait fausser en le modifiant directement — même
+principe que les statistiques générales du profil (voir plus bas, "Ce qui
+n'est pas encore fait"). **Seule exception, documentée et volontairement
+très limitée** : le tag automatique de saison est ajouté par le joueur
+lui-même (pas par toi), mais les règles Firestore vérifient strictement
+que ça ne peut fonctionner que pour LE tag de la saison en cours, une
+seule fois, sans jamais pouvoir toucher à un autre tag ou en retirer un —
+testé et vérifié qu'un joueur ne peut pas s'en servir pour s'attribuer un
+tag "récompense" normal.
+
 ## Ce qui est ajouté depuis la v5 — personnalisation des profils
 
 ### Décorations, thèmes et tags créés par toi
@@ -410,7 +506,9 @@ décorations/thèmes/tags).
 
 ## Ce qui n'est pas encore fait (prochaine étape)
 
-- Le classement général basé sur l'historique des duels et des événements.
+- Un classement général "toutes saisons confondues" (le système de saisons
+  couvre un classement PAR saison programmée, basé uniquement sur le Duel
+  du jour — pas encore un classement all-time incluant aussi l'Événement).
 - Un vrai système de départage en cas d'égalité en fin d'événement.
 - La gestion propre d'un abandon en cours d'événement.
 - La suppression d'un jeu (TCG) une fois créé — volontairement non permise,

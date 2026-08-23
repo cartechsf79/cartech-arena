@@ -238,6 +238,11 @@ async function submitResult(duel, myScore, oppScore, iWon) {
   await updateDoc(doc(duelsCol, duel.id), {
     [field]: myResult,
     status: nextStatus,
+    // Horodatage du moment où le duel est VALIDÉ (les deux résultats
+    // concordent), pas de sa proposition — utilisé par js/season.js pour
+    // savoir à quelle journée/saison rattacher les points gagnés. Absent
+    // tant que le duel n'est pas "termine".
+    ...(nextStatus === "termine" ? { resolvedAt: serverTimestamp() } : {}),
   });
 }
 

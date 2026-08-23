@@ -80,6 +80,9 @@
         </div>
       </div>
 
+      <!-- Affiché seulement s'il y a une saison en cours (rien sinon) -->
+      <div id="season-banner" class="season-banner" style="display:none;"></div>
+
       <div class="card">
         <div class="profile-head">
           <div class="avatar-shell" id="profile-avatar"><div class="avatar-inner">🙂</div></div>
@@ -99,6 +102,7 @@
 
         <button class="btn btn-primary" id="btn-open-daily-duel" type="button">⚔️ Duel du jour</button>
         <button class="btn btn-primary" id="btn-open-event" type="button">🏆 Événement</button>
+        <button class="btn btn-ghost" id="btn-open-season" type="button">🏅 Saison actuelle</button>
         <button class="btn btn-ghost" id="btn-open-event-history" type="button">📜 Historique des événements</button>
 
         <!-- Visible uniquement pour le compte organisateur -->
@@ -114,6 +118,7 @@
       <div class="card" style="margin-top:14px;">
         <h3 style="margin:0 0 4px;">Joueurs</h3>
         <p class="settings-note">🟢 Disponible en boutique · 🔴 En combat · ⚪ Inactif</p>
+        <input type="text" id="home-players-search" placeholder="Rechercher un joueur…" style="margin-bottom:10px;">
         <div id="home-players-list" class="home-players-list"></div>
       </div>
     </div>
@@ -327,6 +332,21 @@
   </div>
 
   <!-- ============================================================ -->
+  <!-- ÉCRAN : Saison actuelle -->
+  <!-- ============================================================ -->
+  <div class="view" id="view-season">
+    <div class="app-wrap settings-wrap">
+      <div class="settings-header">
+        <button class="icon-btn" id="btn-close-season" type="button" title="Retour">←</button>
+        <h1 class="settings-title">🏅 Saison</h1>
+      </div>
+
+      <div class="card settings-section" id="season-organizer-panel" style="display:none;"></div>
+      <div class="card settings-section" id="season-player-area"></div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
   <!-- ÉCRAN : Événement -->
   <!-- ============================================================ -->
   <div class="view" id="view-event">
@@ -408,5 +428,6 @@
   <script type="module" src="js/settings.js"></script>
   <script type="module" src="js/daily-duel.js"></script>
   <script type="module" src="js/event.js"></script>
+  <script type="module" src="js/season.js"></script>
 </body>
 </html>
