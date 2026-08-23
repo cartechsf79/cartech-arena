@@ -242,6 +242,32 @@ function seasonPointsForUid(duels, season, uid) {
   return Object.values(dayPoints).reduce((sum, raw) => sum + Math.min(raw, MAX_POINTS_PER_DAY), 0);
 }
 
+// Points ET victoires/défaites d'UN joueur sur UNE saison donnée — variante
+// de seasonPointsForUid ci-dessus qui garde aussi le décompte victoires/
+// défaites (jamais plafonné, contrairement aux points). Utilisée uniquement
+// pour la saison ACTIVE (voir computeCareerStats) : les saisons passées
+// n'ont besoin que du sous-total de points pour le total "à vie".
+function seasonStatsForUid(duels, season, uid) {
+  let wins = 0;
+  let losses = 0;
+  const dayPoints = {};
+  (duels || []).forEach((d) => {
+    if (d.status !== "termine" || !d.resolvedAt) return;
+    const dateStr = localDateStr(toDate(d.resolvedAt));
+    if (dateStr < season.startDate || dateStr > season.endDate) return;
+    if (!d.resultFrom || !d.resultTo) return;
+    let won;
+    if (d.fromUid === uid) won = !!d.resultFrom.iWon;
+    else if (d.toUid === uid) won = !!d.resultTo.iWon;
+    else return;
+    if (won) wins += 1;
+    else losses += 1;
+    dayPoints[dateStr] = (dayPoints[dateStr] || 0) + (won ? WIN_POINTS : LOSS_POINTS);
+  });
+  const points = Object.values(dayPoints).reduce((sum, raw) => sum + Math.min(raw, MAX_POINTS_PER_DAY), 0);
+  return { points, wins, losses };
+}
+
 export function computeCareerStats(duels, seasons, uid) {
   let lifetimeWins = 0;
   let lifetimeLosses = 0;
@@ -258,15 +284,50 @@ export function computeCareerStats(duels, seasons, uid) {
 
   const lifetimePoints = (seasons || []).reduce((sum, s) => sum + seasonPointsForUid(duels, s, uid), 0);
   const active = getActiveSeason(seasons || []);
-  const currentSeasonPoints = active ? seasonPointsForUid(duels, active, uid) : 0;
+  const currentSeason = active ? seasonStatsForUid(duels, active, uid) : { points: 0, wins: 0, losses: 0 };
 
   return {
     lifetimePoints,
     lifetimeWins,
     lifetimeLosses,
-    currentSeasonPoints,
+    currentSeasonPoints: currentSeason.points,
+    currentSeasonWins: currentSeason.wins,
+    currentSeasonLosses: currentSeason.losses,
     currentSeasonNumber: active ? active.seasonNumber : null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Face-à-face entre 2 joueurs précis — combien de fois uidA a battu uidB et
+// vice versa, tous duels confondus (peu importe la saison). Utilisé sur la
+// popup "Voir le profil" pour montrer directement le bilan entre la personne
+// qui regarde et celle dont elle consulte le profil.
+// ---------------------------------------------------------------------------
+export function computeHeadToHead(duels, uidA, uidB) {
+  let aWins = 0;
+  let bWins = 0;
+  let matches = 0;
+  (duels || []).forEach((d) => {
+    if (d.status !== "termine" || !d.resultFrom || !d.resultTo) return;
+    if (d.fromUid === uidA && d.toUid === uidB) {
+      matches += 1;
+      if (d.resultFrom.iWon) aWins += 1;
+      else bWins += 1;
+    } else if (d.fromUid === uidB && d.toUid === uidA) {
+      matches += 1;
+      if (d.resultTo.iWon) aWins += 1;
+      else bWins += 1;
+    }
+  });
+  return { aWins, bWins, matches };
+}
+
+// Version "à la demande" (un seul appel réseau), même esprit que
+// fetchCareerStats ci-dessous.
+export async function fetchHeadToHead(uidA, uidB) {
+  const duelsSnap = await getDocs(duelsCol);
+  const duelsList = duelsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  return computeHeadToHead(duelsList, uidA, uidB);
 }
 
 // Version "à la demande" (un seul appel réseau, pas d'écoute permanente) —

@@ -27,11 +27,13 @@ const decorationsCol = collection(db, "decorations");
 const themesCol = collection(db, "themes");
 const tagsCol = collection(db, "tags");
 const gamesCol = collection(db, "games");
+const profileBgsCol = collection(db, "profileBgs");
 
 let liveDecorations = [];
 let liveThemes = [];
 let liveTags = [];
 let liveGames = [];
+let liveProfileBgs = [];
 let started = false;
 let listeners = [];
 
@@ -52,6 +54,10 @@ export const MAX_TAG_EMOJI_BYTES = 150_000;
 // l'animation (une seule image serait "gelée"). Toujours plafonné plus bas
 // que les décorations animées puisque l'icône reste minuscule à l'affichage.
 export const MAX_ANIMATED_TAG_EMOJI_BYTES = 300_000;
+// Fond de profil : affiché en arrière-plan (estompé) derrière une fiche
+// profil entière (plus grand qu'une icône mais plus petit qu'un fond de
+// thème plein écran) — marge intermédiaire entre les deux.
+export const MAX_PROFILE_BG_BYTES = 500_000;
 
 // ---------------------------------------------------------------------------
 // Écoute temps réel — démarrée une seule fois après connexion (voir app.js)
@@ -87,6 +93,13 @@ export function startLiveCatalogs(onUpdate) {
       document.dispatchEvent(new CustomEvent("cartech:catalogs"));
     })
   );
+  listeners.push(
+    onSnapshot(profileBgsCol, (snap) => {
+      liveProfileBgs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      onUpdate?.();
+      document.dispatchEvent(new CustomEvent("cartech:catalogs"));
+    })
+  );
 }
 
 export function stopLiveCatalogs() {
@@ -96,6 +109,7 @@ export function stopLiveCatalogs() {
   liveThemes = [];
   liveTags = [];
   liveGames = [];
+  liveProfileBgs = [];
   started = false;
 }
 
@@ -133,6 +147,16 @@ export function getAllTags() {
 // et ne doit donc jamais apparaître comme un jeu supplémentaire ici.
 export function getAllGames() {
   return [...GAMES, ...liveGames.filter((g) => g.name).map((g) => g.name)];
+}
+
+// Fonds de profil : pas de "builtin" (aucun fond de base) — uniquement créés
+// par l'organisateur, avec le même fonctionnement publié/non publié que les
+// décorations (voir getAllDecorations ci-dessus).
+export function getAllProfileBgs({ includeUnpublished = false } = {}) {
+  return liveProfileBgs.filter((b) => includeUnpublished || b.published);
+}
+export function findAnyProfileBg(id) {
+  return liveProfileBgs.find((b) => b.id === id) || null;
 }
 
 // Condition de victoire configurée pour un jeu (de base ou personnalisé) —
@@ -357,6 +381,28 @@ export async function compressThemeBgImage(file) {
   return dataUrl;
 }
 
+// Compression d'une image de fond de profil (JPEG, même logique que le fond
+// de thème ci-dessus mais taille de départ plus modeste : affichée derrière
+// une simple fiche profil, pas en plein écran).
+export async function compressProfileBgImage(file) {
+  const img = await fileToImage(file);
+  let side = 1200;
+  let dataUrl = "";
+  do {
+    const canvas = document.createElement("canvas");
+    const ratio = Math.min(1, side / Math.max(img.width, img.height));
+    canvas.width = Math.round(img.width * ratio);
+    canvas.height = Math.round(img.height * ratio);
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+    side -= 120;
+  } while (dataUrl.length > MAX_PROFILE_BG_BYTES && side > 120);
+  return dataUrl;
+}
+
 export function fileToRawDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -461,6 +507,41 @@ export function downloadThemeBgTemplate() {
   triggerDownload(canvas.toDataURL("image/png"), "gabarit-fond-theme-1080x1920.png");
 }
 
+// Gabarit pour un fond de profil : image affichée en format "carte" (plus
+// large que haute) derrière une fiche profil, estompée (opacité réduite,
+// voir .profile-bg-card dans style.css) — la zone marquée reste visible en
+// entier, contrairement au fond de thème plein écran qui peut être recadré
+// par le navigateur selon la taille d'écran.
+export function downloadProfileBgTemplate() {
+  const W = 1200;
+  const H = 700;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+
+  ctx.fillStyle = "#14161c";
+  ctx.fillRect(0, 0, W, H);
+
+  const marginX = Math.round(W * 0.05);
+  const marginY = Math.round(H * 0.08);
+  ctx.save();
+  ctx.strokeStyle = "#5b8cff";
+  ctx.lineWidth = 4;
+  ctx.setLineDash([18, 14]);
+  ctx.strokeRect(marginX, marginY, W - marginX * 2, H - marginY * 2);
+  ctx.restore();
+
+  ctx.fillStyle = "#5b8cff";
+  ctx.textAlign = "center";
+  ctx.font = "bold 32px sans-serif";
+  ctx.fillText("Zone visible derrière la fiche profil (affichée estompée)", W / 2, marginY - 22);
+  ctx.font = "24px sans-serif";
+  ctx.fillText(`Format conseillé : ${W}×${H} px (paysage)`, W / 2, H / 2);
+
+  triggerDownload(canvas.toDataURL("image/png"), "gabarit-fond-profil-1200x700.png");
+}
+
 // Gabarit pour un emoji personnalisé de tag : l'icône est toujours recadrée
 // en carré au centre puis affichée en rond à très petite taille (~16px), donc
 // le gabarit marque un large cercle de sécurité au centre — tout ce qui sort
@@ -525,6 +606,23 @@ export async function updateDecoration(id, patch) {
 }
 export async function deleteDecoration(id) {
   await deleteDoc(doc(decorationsCol, id));
+}
+
+export async function createProfileBg({ name, imageDataUrl }) {
+  await addDoc(profileBgsCol, {
+    name: name.trim(),
+    imageDataUrl,
+    // Même logique que les décorations : non publié par défaut, à publier
+    // explicitement une fois prêt (voir renderProfileBgManageList).
+    published: false,
+    createdAt: serverTimestamp(),
+  });
+}
+export async function updateProfileBg(id, patch) {
+  await updateDoc(doc(profileBgsCol, id), patch);
+}
+export async function deleteProfileBg(id) {
+  await deleteDoc(doc(profileBgsCol, id));
 }
 
 export async function createTheme({ name, colors, bgImageDataUrl }) {

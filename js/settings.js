@@ -27,11 +27,13 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 import { auth, db, ORGANIZER_EMAIL } from "./firebase-init.js";
-import { $, showToast, friendlyError, getCurrentProfile, getCurrentUid, renderAvatar, renderProfile, showSettingsScreen } from "./app.js";
+import { $, showToast, friendlyError, getCurrentProfile, getCurrentUid, renderAvatar, renderProfile, showSettingsScreen, applyProfileBackground, winsLossesHtml } from "./app.js";
 import {
   getAllDecorations,
   getAllThemes,
   getAllTags,
+  getAllProfileBgs,
+  findAnyProfileBg,
   usableTagsFor,
   isTagUsable,
   findAnyTag,
@@ -40,11 +42,13 @@ import {
   compressStaticDecoImage,
   compressThemeBgImage,
   compressTagEmojiImage,
+  compressProfileBgImage,
   fileToRawDataUrl,
   MAX_ANIMATED_DECO_BYTES,
   MAX_THEME_BG_BYTES,
   MAX_TAG_EMOJI_BYTES,
   MAX_ANIMATED_TAG_EMOJI_BYTES,
+  MAX_PROFILE_BG_BYTES,
   createDecoration,
   updateDecoration,
   deleteDecoration,
@@ -55,6 +59,9 @@ import {
   updateTag,
   deleteTag,
   getTagIcon,
+  createProfileBg,
+  updateProfileBg,
+  deleteProfileBg,
   getAllGames,
   createGame,
   getGameWinCondition,
@@ -63,8 +70,9 @@ import {
   downloadDecorationTemplate,
   downloadThemeBgTemplate,
   downloadTagEmojiTemplate,
+  downloadProfileBgTemplate,
 } from "./live-catalog.js";
-import { fetchCareerStats } from "./season.js";
+import { fetchCareerStats, fetchHeadToHead } from "./season.js";
 
 const MAX_PHOTO_BYTES = 700_000; // marge de sécurité sous la limite de 1 Mo par document Firestore
 const CROP_VIEWPORT = 260; // doit correspondre à la taille CSS de .cropper-viewport
@@ -103,6 +111,7 @@ function populateSettingsScreen() {
   $("#note-google-only").style.display = hasPassword ? "none" : "";
 
   renderDecorationsGrid(profile);
+  renderProfileBgGrid(profile);
   renderThemesGrid(profile);
   renderTagsGrid(profile);
 
@@ -386,6 +395,55 @@ async function setActiveDecoration(decoId) {
 }
 
 // ---------------------------------------------------------------------------
+// Fond de profil (soi-même) — même logique de déblocage que les décorations
+// (owned/active par compte, débloqué uniquement par l'organisateur).
+// ---------------------------------------------------------------------------
+function bgSwatchHtml(bg) {
+  return `<div class="chip-swatch" style="background-image:url('${bg.imageDataUrl}');background-size:cover;background-position:center;"></div>`;
+}
+
+function renderProfileBgGrid(profile) {
+  const grid = $("#profile-bg-grid");
+  if (!grid) return;
+  grid.innerHTML = "";
+  const owned = profile?.profileBg?.owned || [];
+  const active = profile?.profileBg?.active || null;
+
+  const noneChip = document.createElement("div");
+  noneChip.className = "chip" + (active === null ? " active" : "");
+  noneChip.innerHTML = `<div class="chip-swatch" style="background:var(--bg2);border:1px dashed var(--panel-border);"></div><div class="chip-label">Aucun</div>`;
+  noneChip.onclick = () => setActiveProfileBg(null);
+  grid.appendChild(noneChip);
+
+  // Même règle que les décorations : catalogue publié + tout fond déjà
+  // possédé même si dépublié depuis (pour ne jamais faire "disparaître" un
+  // fond qu'un joueur a déjà choisi).
+  const visible = getAllProfileBgs({ includeUnpublished: true }).filter((b) => b.published || owned.includes(b.id));
+  visible.forEach((bg) => {
+    const isOwned = owned.includes(bg.id);
+    const chip = document.createElement("div");
+    chip.className = "chip" + (!isOwned ? " locked" : "") + (active === bg.id ? " active" : "");
+    chip.innerHTML = `
+      ${bgSwatchHtml(bg)}
+      <div class="chip-label">${escapeHtml(bg.name)}</div>
+      <div class="chip-sub">${isOwned ? "Débloqué" : "🔒 verrouillé"}</div>
+    `;
+    if (isOwned) chip.onclick = () => setActiveProfileBg(bg.id);
+    grid.appendChild(chip);
+  });
+}
+
+async function setActiveProfileBg(bgId) {
+  try {
+    await updateDoc(doc(db, "users", getCurrentUid()), { "profileBg.active": bgId });
+    const profile = await refreshAfterChange();
+    renderProfileBgGrid(profile);
+  } catch (err) {
+    showToast(friendlyError(err), true);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Thèmes (soi-même) — fusionne les 6 thèmes de base et les thèmes
 // personnalisés créés par l'organisateur (toujours verrouillés par défaut,
 // comme les thèmes "Trophée").
@@ -530,7 +588,11 @@ async function renderPlayerCard(targetUid, targetProfile) {
   const resultEl = $("#search-player-result");
   resultEl.innerHTML = `<p class="settings-note">Chargement…</p>`;
   const isOrganizer = getCurrentProfile()?.role === "organisateur";
-  const career = await fetchCareerStats(targetUid);
+  const myUid = getCurrentUid();
+  const [career, headToHead] = await Promise.all([
+    fetchCareerStats(targetUid),
+    myUid && myUid !== targetUid ? fetchHeadToHead(myUid, targetUid) : Promise.resolve(null),
+  ]);
   resultEl.innerHTML = "";
 
   const card = document.createElement("div");
@@ -544,16 +606,25 @@ async function renderPlayerCard(targetUid, targetProfile) {
   const isOrg = targetProfile.role === "organisateur";
   const seasonLine =
     career.currentSeasonNumber != null
-      ? `${career.currentSeasonPoints} pts — Saison ${career.currentSeasonNumber} en cours`
+      ? `${career.currentSeasonPoints} pts — ${winsLossesHtml(career.currentSeasonWins, career.currentSeasonLosses)} — Saison ${career.currentSeasonNumber} en cours`
       : "Aucune saison en cours";
+  const headToHeadHtml = headToHead
+    ? `<div class="settings-note">Face à face (toi vs ${targetProfile.pseudo}) : ${
+        headToHead.matches > 0
+          ? `${winsLossesHtml(headToHead.aWins, headToHead.bWins)} sur ${headToHead.matches} match${headToHead.matches > 1 ? "s" : ""}`
+          : "aucun match encore joué"
+      }</div>`
+    : "";
   info.innerHTML = `
     <div style="font-weight:800;">${targetProfile.pseudo}</div>
     <span class="badge ${isOrg ? "badge-organizer" : "badge-player"}">${isOrg ? "🛡️ Organisateur" : "🎮 Joueur"}</span>
-    <div class="settings-note">${career.lifetimePoints} pts (total) · ${career.lifetimeWins}V / ${career.lifetimeLosses}D (tous matchs)</div>
+    <div class="settings-note">${career.lifetimePoints} pts (total) · ${winsLossesHtml(career.lifetimeWins, career.lifetimeLosses)} (tous matchs)</div>
     <div class="settings-note">${seasonLine}</div>
+    ${headToHeadHtml}
   `;
   card.appendChild(info);
   resultEl.appendChild(card);
+  applyProfileBackground(card, targetProfile);
 
   const tags = document.createElement("div");
   tags.className = "player-tags";
@@ -621,6 +692,46 @@ function buildOrganizerManagePanel(targetUid, targetProfile) {
     decoGrid.appendChild(chip);
   });
   wrap.appendChild(decoGrid);
+
+  const bgLabel = document.createElement("div");
+  bgLabel.className = "manage-grid-label";
+  bgLabel.textContent = "🖼️ Fonds de profil à attribuer";
+  wrap.appendChild(bgLabel);
+
+  const bgGrid = document.createElement("div");
+  bgGrid.className = "chip-grid";
+  getAllProfileBgs({ includeUnpublished: true }).forEach((bg) => {
+    const owned = (targetProfile.profileBg?.owned || []).includes(bg.id);
+    const chip = document.createElement("div");
+    chip.className = "chip" + (owned ? " active" : "");
+    chip.innerHTML = `
+      ${bgSwatchHtml(bg)}
+      <div class="chip-label">${escapeHtml(bg.name)}</div>
+      <div class="chip-sub">${owned ? "✅ Possédé" : "Donner"}</div>
+    `;
+    chip.onclick = async () => {
+      try {
+        const patch = {
+          "profileBg.owned": owned ? arrayRemove(bg.id) : arrayUnion(bg.id),
+        };
+        // Même logique que les décorations : si on retire le fond
+        // actuellement affiché par le joueur, on désactive aussi tout de
+        // suite plutôt que de laisser "active" pointer vers un fond qu'il ne
+        // possède plus.
+        if (owned && targetProfile.profileBg?.active === bg.id) {
+          patch["profileBg.active"] = null;
+        }
+        await updateDoc(doc(db, "users", targetUid), patch);
+        const snap = await getDoc(doc(db, "users", targetUid));
+        await renderPlayerCard(targetUid, snap.data());
+        showToast(owned ? "Fond de profil retiré." : "Fond de profil attribué !");
+      } catch (err) {
+        showToast(friendlyError(err), true);
+      }
+    };
+    bgGrid.appendChild(chip);
+  });
+  wrap.appendChild(bgGrid);
 
   const themeLabel = document.createElement("div");
   themeLabel.className = "manage-grid-label";
@@ -719,6 +830,8 @@ function buildOrganizerManagePanel(targetUid, targetProfile) {
 // ---------------------------------------------------------------------------
 let editingDecoId = null;
 let editingDecoCurrent = null; // { imageDataUrl, type } de la décoration en cours de modification
+let editingProfileBgId = null;
+let editingProfileBgDataUrl = null; // image en cours (déjà enregistrée ou tout juste importée), ou null
 let editingThemeId = null;
 let editingThemeBgDataUrl = null; // image de fond en cours (déjà enregistrée ou tout juste importée), ou null
 let editingTagId = null;
@@ -731,6 +844,7 @@ function renderOrganizerCatalogPanel() {
   section.style.display = isOrg ? "" : "none";
   if (!isOrg) return;
   renderDecoManageList();
+  renderProfileBgManageList();
   renderThemeManageList();
   renderTagManageList();
   renderGameManageList();
@@ -854,6 +968,138 @@ async function handleAdminDecoSubmit(e) {
       showToast("Décoration créée !");
     }
     cancelEditDeco();
+  } catch (err) {
+    showToast(friendlyError(err), true);
+  }
+}
+
+function renderProfileBgManageList() {
+  const list = $("#admin-profile-bg-list");
+  if (!list) return;
+  const all = getAllProfileBgs({ includeUnpublished: true });
+  list.innerHTML = all.length ? "" : `<p class="settings-note">Aucun fond de profil créé pour l'instant.</p>`;
+  all.forEach((bg) => {
+    const row = document.createElement("div");
+    row.className = "admin-manage-row";
+
+    const chip = document.createElement("div");
+    chip.className = "chip" + (editingProfileBgId === bg.id ? " active" : "");
+    chip.innerHTML = `
+      ${bgSwatchHtml(bg)}
+      <div class="chip-label">${escapeHtml(bg.name)}</div>
+      <div class="chip-sub">${bg.published ? "✅ Publié" : "🔒 Non publié"} · Modifier</div>
+    `;
+    chip.onclick = () => startEditProfileBg(bg);
+    row.appendChild(chip);
+
+    const actions = document.createElement("div");
+    actions.className = "admin-manage-actions";
+
+    const publishBtn = document.createElement("button");
+    publishBtn.type = "button";
+    publishBtn.className = "btn-small";
+    publishBtn.textContent = bg.published ? "Dépublier" : "Publier";
+    publishBtn.onclick = async (e) => {
+      e.stopPropagation();
+      try {
+        await updateProfileBg(bg.id, { published: !bg.published });
+        showToast(bg.published ? "Fond de profil dépublié (visible uniquement par toi)." : "Fond de profil publié pour tout le monde !");
+      } catch (err) {
+        showToast(friendlyError(err), true);
+      }
+    };
+    actions.appendChild(publishBtn);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "btn-small btn-danger";
+    deleteBtn.textContent = "Supprimer";
+    deleteBtn.onclick = async (e) => {
+      e.stopPropagation();
+      if (!confirm(`Supprimer définitivement le fond de profil « ${bg.name} » ?`)) return;
+      try {
+        await deleteProfileBg(bg.id);
+        if (editingProfileBgId === bg.id) cancelEditProfileBg();
+        showToast("Fond de profil supprimé.");
+      } catch (err) {
+        showToast(friendlyError(err), true);
+      }
+    };
+    actions.appendChild(deleteBtn);
+
+    row.appendChild(actions);
+    list.appendChild(row);
+  });
+}
+
+function updateProfileBgPreview() {
+  const preview = $("#admin-profile-bg-preview");
+  if (!preview) return;
+  if (editingProfileBgDataUrl) {
+    preview.src = editingProfileBgDataUrl;
+    preview.style.display = "";
+  } else {
+    preview.removeAttribute("src");
+    preview.style.display = "none";
+  }
+}
+
+async function handleProfileBgFileChosen(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  if (file.size > 8_000_000) {
+    showToast("Cette image est trop lourde à importer (8 Mo max avant compression).", true);
+    return;
+  }
+  try {
+    editingProfileBgDataUrl = await compressProfileBgImage(file);
+    updateProfileBgPreview();
+  } catch (err) {
+    showToast("Impossible de lire cette image.", true);
+  }
+}
+
+function startEditProfileBg(bg) {
+  editingProfileBgId = bg.id;
+  editingProfileBgDataUrl = bg.imageDataUrl || null;
+  $("#admin-profile-bg-name").value = bg.name;
+  $("#admin-profile-bg-file").value = "";
+  updateProfileBgPreview();
+  $("#admin-profile-bg-submit").textContent = "Enregistrer les modifications";
+  $("#admin-profile-bg-cancel").style.display = "";
+  renderProfileBgManageList();
+  $("#form-admin-profile-bg")?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+function cancelEditProfileBg() {
+  editingProfileBgId = null;
+  editingProfileBgDataUrl = null;
+  $("#form-admin-profile-bg")?.reset();
+  updateProfileBgPreview();
+  $("#admin-profile-bg-submit").textContent = "Créer le fond de profil";
+  $("#admin-profile-bg-cancel").style.display = "none";
+  renderProfileBgManageList();
+}
+
+async function handleAdminProfileBgSubmit(e) {
+  e.preventDefault();
+  const name = $("#admin-profile-bg-name").value.trim();
+  if (!name) {
+    showToast("Donne un nom au fond de profil.", true);
+    return;
+  }
+  if (!editingProfileBgDataUrl) {
+    showToast("Choisis une image pour ce fond de profil.", true);
+    return;
+  }
+  try {
+    if (editingProfileBgId) {
+      await updateProfileBg(editingProfileBgId, { name, imageDataUrl: editingProfileBgDataUrl });
+      showToast("Fond de profil modifié !");
+    } else {
+      await createProfileBg({ name, imageDataUrl: editingProfileBgDataUrl });
+      showToast("Fond de profil créé !");
+    }
+    cancelEditProfileBg();
   } catch (err) {
     showToast(friendlyError(err), true);
   }
@@ -1358,6 +1604,10 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#form-admin-deco")?.addEventListener("submit", handleAdminDecoSubmit);
   $("#admin-deco-cancel")?.addEventListener("click", cancelEditDeco);
   $("#btn-download-deco-template")?.addEventListener("click", downloadDecorationTemplate);
+  $("#form-admin-profile-bg")?.addEventListener("submit", handleAdminProfileBgSubmit);
+  $("#admin-profile-bg-cancel")?.addEventListener("click", cancelEditProfileBg);
+  $("#admin-profile-bg-file")?.addEventListener("change", handleProfileBgFileChosen);
+  $("#btn-download-profile-bg-template")?.addEventListener("click", downloadProfileBgTemplate);
   $("#form-admin-theme")?.addEventListener("submit", handleAdminThemeSubmit);
   $("#admin-theme-cancel")?.addEventListener("click", cancelEditTheme);
   $("#admin-theme-bg-file")?.addEventListener("change", handleThemeBgFileChosen);

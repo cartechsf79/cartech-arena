@@ -136,6 +136,12 @@ service cloud.firestore {
         && request.resource.data.decorations.active == null
         && (!('tags' in request.resource.data)
             || (request.resource.data.tags.get('owned', []).size() == 0 && request.resource.data.tags.get('active', []).size() == 0))
+        // Même règle que les décorations, mais écrite avec .get() (valeur par
+        // défaut {}) plutôt que 'in' : un fond de profil aucun débloqué/actif
+        // à la création, que le champ "profileBg" soit présent ou non dans
+        // l'écriture — les deux passent.
+        && request.resource.data.get('profileBg', {}).get('owned', []).size() == 0
+        && request.resource.data.get('profileBg', {}).get('active', null) == null
         && (
           (request.resource.data.role == 'organisateur'
             && request.auth.token.email.lower() == 'cartechsf79@gmail.com')
@@ -173,6 +179,12 @@ service cloud.firestore {
           // valeur par défaut, sans jamais faire planter la règle.
           && (!('decorations' in resource.data) || request.resource.data.decorations.get('owned', []) == resource.data.decorations.get('owned', []))
           && (!('theme' in resource.data) || request.resource.data.theme.get('owned', []) == resource.data.theme.get('owned', []))
+          // Fond de profil : même "laisser-passer" que décorations/thème,
+          // mais toujours avec .get('profileBg', {}) plutôt que 'in' — les
+          // comptes créés avant cette version n'ont pas ce champ du tout,
+          // et .get() avec valeur par défaut évite toute erreur d'évaluation
+          // dans ce cas (voir le long commentaire ci-dessus sur .get()).
+          && request.resource.data.get('profileBg', {}).get('owned', []) == resource.data.get('profileBg', {}).get('owned', [])
           && (!('tags' in resource.data)
               || request.resource.data.tags.get('owned', []) == resource.data.tags.get('owned', [])
               || isValidSelfSeasonTagGrant(resource.data.tags.get('owned', []), request.resource.data.tags.get('owned', [])))
@@ -190,6 +202,9 @@ service cloud.firestore {
               || request.resource.data.decorations.get('active', null) == resource.data.decorations.get('active', null))
           && (request.resource.data.theme.get('active', 'classique') in request.resource.data.theme.get('owned', [])
               || request.resource.data.theme.get('active', 'classique') == resource.data.theme.get('active', 'classique'))
+          && (request.resource.data.get('profileBg', {}).get('active', null) == null
+              || request.resource.data.get('profileBg', {}).get('active', null) in request.resource.data.get('profileBg', {}).get('owned', [])
+              || request.resource.data.get('profileBg', {}).get('active', null) == resource.data.get('profileBg', {}).get('active', null))
           && (!('tags' in request.resource.data)
               || tagsActiveValid(request.resource.data.tags.get('active', []), request.resource.data.tags.get('owned', []))
               || request.resource.data.tags.get('active', []) == resource.data.tags.get('active', []))
@@ -233,6 +248,17 @@ service cloud.firestore {
 
     match /themes/{themeId} {
       allow read: if request.auth != null;
+      allow create, update: if isOrganizer();
+      allow delete: if isOrganizer();
+    }
+
+    // Fonds de profil : même fonctionnement que /decorations ci-dessus
+    // (publié/non publié, suppression permise sans casser l'affichage d'un
+    // joueur qui en avait un actif — voir applyProfileBackground dans
+    // app.js, qui ignore silencieusement une référence introuvable).
+    match /profileBgs/{bgId} {
+      allow read: if request.auth != null
+        && (resource.data.get('published', true) == true || isOrganizer());
       allow create, update: if isOrganizer();
       allow delete: if isOrganizer();
     }

@@ -19,9 +19,9 @@ import {
 
 import { auth, db, ORGANIZER_EMAIL } from "./firebase-init.js";
 import { DEFAULT_OWNED_THEMES } from "./catalog.js";
-import { startLiveCatalogs, stopLiveCatalogs, findAnyDecoration, findAnyTag, applyThemeLive, contrastTextColor, getTagIcon } from "./live-catalog.js";
+import { startLiveCatalogs, stopLiveCatalogs, findAnyDecoration, findAnyTag, findAnyProfileBg, applyThemeLive, contrastTextColor, getTagIcon } from "./live-catalog.js";
 import { startHomePlayersListener, stopHomePlayersListener } from "./home-players.js";
-import { startSeasonBannerListener, stopSeasonBannerListener, startCareerStatsListener, stopCareerStatsListener, fetchCareerStats } from "./season.js";
+import { startSeasonBannerListener, stopSeasonBannerListener, startCareerStatsListener, stopCareerStatsListener, fetchCareerStats, fetchHeadToHead } from "./season.js";
 
 export const $ = (sel) => document.querySelector(sel);
 
@@ -101,6 +101,7 @@ async function ensureUserProfile(user, pseudoFromSignup) {
     const patch = {};
     if (!data.decorations) patch.decorations = { owned: [], active: null };
     if (!data.theme) patch.theme = { owned: DEFAULT_OWNED_THEMES, active: "classique" };
+    if (!data.profileBg) patch.profileBg = { owned: [], active: null };
     // Un compte dont "tags" existe déjà mais sans "owned" (ex. un joueur qui
     // a activé un tag "par défaut" avant même que "tags" ait été créé sur
     // son document) bloquait TOUTES ses modifications futures — voir
@@ -133,6 +134,7 @@ async function ensureUserProfile(user, pseudoFromSignup) {
     decorations: { owned: [], active: null },
     theme: { owned: DEFAULT_OWNED_THEMES, active: "classique" },
     tags: { owned: [], active: [] },
+    profileBg: { owned: [], active: null },
     createdAt: serverTimestamp(),
   };
 
@@ -239,6 +241,26 @@ export function renderAvatar(container, profile, size = 54) {
   }
 }
 
+// Fond de profil (facultatif, débloqué par l'organisateur comme une
+// décoration/un thème) : affiché en arrière-plan, légèrement estompé (voir
+// .profile-bg-card dans style.css), derrière une fiche profil entière —
+// réutilisé sur l'accueil (sa propre fiche), la popup "Voir le profil" et la
+// fiche de recherche organisateur, pour que ça reste cohérent partout où le
+// profil d'un joueur est affiché (même logique que renderAvatar ci-dessus).
+export function applyProfileBackground(el, profile) {
+  if (!el) return;
+  el.classList.add("profile-bg-card");
+  const bgId = profile?.profileBg?.active || null;
+  const bg = bgId ? findAnyProfileBg(bgId) : null;
+  if (bg?.imageDataUrl) {
+    el.style.setProperty("--profile-bg-image", `url("${bg.imageDataUrl}")`);
+    el.classList.add("has-profile-bg");
+  } else {
+    el.style.removeProperty("--profile-bg-image");
+    el.classList.remove("has-profile-bg");
+  }
+}
+
 export function renderProfile(profile) {
   currentProfile = profile;
   broadcastProfile();
@@ -246,6 +268,7 @@ export function renderProfile(profile) {
   $("#profile-pseudo").textContent = profile.pseudo;
   $("#profile-email").textContent = profile.email;
   renderAvatar($("#profile-avatar"), profile, 54);
+  applyProfileBackground($("#profile-card"), profile);
 
   const badge = $("#role-badge");
   const isOrganizer = profile.role === "organisateur";
@@ -298,6 +321,14 @@ function escapeHtmlLocal(str) {
   return d.innerHTML;
 }
 
+// Victoires en vert, défaites en rouge (voir .stat-win/.stat-loss dans
+// style.css) — exporté pour être réutilisé partout où un total victoires/
+// défaites est affiché (cette popup, la fiche de recherche organisateur...),
+// pour rester cohérent dans toute l'appli.
+export function winsLossesHtml(wins, losses) {
+  return `<span class="stat-win">${wins}V</span> / <span class="stat-loss">${losses}D</span>`;
+}
+
 export async function openPlayerProfileModal(targetUid) {
   const overlay = $("#overlay-player-profile");
   const body = $("#player-profile-modal-body");
@@ -305,18 +336,25 @@ export async function openPlayerProfileModal(targetUid) {
   body.innerHTML = `<p class="settings-note">Chargement…</p>`;
   overlay.classList.add("show");
   try {
-    const [snap, career] = await Promise.all([getDoc(doc(db, "users", targetUid)), fetchCareerStats(targetUid)]);
+    const myUid = getCurrentUid();
+    const [snap, career, headToHead] = await Promise.all([
+      getDoc(doc(db, "users", targetUid)),
+      fetchCareerStats(targetUid),
+      // Pas de face-à-face avec soi-même (on ne consulte normalement jamais
+      // son propre profil via cette popup, mais on se protège quand même).
+      myUid && myUid !== targetUid ? fetchHeadToHead(myUid, targetUid) : Promise.resolve(null),
+    ]);
     if (!snap.exists()) {
       body.innerHTML = `<p class="settings-note">Profil introuvable (peut-être supprimé).</p>`;
       return;
     }
-    renderPlayerProfileModalContent(targetUid, snap.data(), career);
+    renderPlayerProfileModalContent(targetUid, snap.data(), career, headToHead);
   } catch (err) {
     body.innerHTML = `<p class="dd-error">${friendlyError(err)}</p>`;
   }
 }
 
-function renderPlayerProfileModalContent(targetUid, profile, career) {
+function renderPlayerProfileModalContent(targetUid, profile, career, headToHead) {
   const body = $("#player-profile-modal-body");
   if (!body) return;
   const isOrg = profile.role === "organisateur";
@@ -338,23 +376,35 @@ function renderPlayerProfileModalContent(targetUid, profile, career) {
   const canManage = getCurrentProfile()?.role === "organisateur" && targetUid !== getCurrentUid();
   const seasonLine =
     career.currentSeasonNumber != null
-      ? `${career.currentSeasonPoints} pts — Saison ${career.currentSeasonNumber} en cours`
+      ? `${career.currentSeasonPoints} pts — ${winsLossesHtml(career.currentSeasonWins, career.currentSeasonLosses)} — Saison ${career.currentSeasonNumber} en cours`
       : "Aucune saison en cours";
+  // Bilan face-à-face entre TOI (celui qui regarde) et cette personne — voir
+  // computeHeadToHead dans season.js. aWins = tes victoires contre elle
+  // (vert), bWins = ses victoires contre toi, donc tes défaites (rouge).
+  const headToHeadHtml = headToHead
+    ? `<div class="settings-note">Face à face (toi vs ${escapeHtmlLocal(profile.pseudo)}) : ${
+        headToHead.matches > 0
+          ? `${winsLossesHtml(headToHead.aWins, headToHead.bWins)} sur ${headToHead.matches} match${headToHead.matches > 1 ? "s" : ""}`
+          : "aucun match encore joué"
+      }</div>`
+    : "";
 
   body.innerHTML = `
-    <div class="player-card" style="margin-top:0;">
+    <div class="player-card profile-bg-card" style="margin-top:0;" id="player-modal-card">
       <div class="avatar-shell" id="player-modal-avatar"></div>
       <div class="player-card-info">
         <div style="font-weight:800;">${escapeHtmlLocal(profile.pseudo)}</div>
         <span class="badge ${isOrg ? "badge-organizer" : "badge-player"}">${isOrg ? "🛡️ Organisateur" : "🎮 Joueur"}</span>
-        <div class="settings-note">${career.lifetimePoints} pts (total) · ${career.lifetimeWins}V / ${career.lifetimeLosses}D (tous matchs)</div>
+        <div class="settings-note">${career.lifetimePoints} pts (total) · ${winsLossesHtml(career.lifetimeWins, career.lifetimeLosses)} (tous matchs)</div>
         <div class="settings-note">${seasonLine}</div>
+        ${headToHeadHtml}
       </div>
     </div>
     <div class="player-tags">${tagsHtml}</div>
     ${canManage ? `<button class="btn btn-ghost" type="button" id="player-modal-manage-btn">Gérer ce joueur →</button>` : ""}
   `;
   renderAvatar($("#player-modal-avatar"), profile, 56);
+  applyProfileBackground($("#player-modal-card"), profile);
   $("#player-modal-manage-btn")?.addEventListener("click", () => {
     closePlayerProfileModal();
     document.dispatchEvent(new CustomEvent("cartech:manage-player", { detail: { uid: targetUid } }));

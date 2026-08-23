@@ -1,17 +1,32 @@
-# Car'Tech Arena — v8.4
+# Car'Tech Arena — v8.5
 
-Cette version permet à l'emoji personnalisé d'un tag (importé par image,
-voir v8.3) d'être **animé** : importer un **gif animé** le garde tel
-quel, avec son animation, au lieu de le figer sur une seule image. Voir
-"Nouveau dans cette version — emoji animé (gif)" plus bas pour le détail
+Cette version ajoute trois choses à la popup **"Voir le profil"** et à la
+personnalisation : les **victoires/défaites de la saison en cours**
+(en plus des points), un nouveau **fond de profil** personnalisable
+(débloqué par l'organisateur, comme les décorations/thèmes), avec son
+**gabarit téléchargeable**, et le **face-à-face** entre toi et la
+personne dont tu regardes le profil (combien de fois vous vous êtes
+affrontés, et qui a gagné). Les victoires s'affichent maintenant en
+**vert** et les défaites en **rouge** partout où un total victoires/
+défaites apparaît. Voir "Nouveau dans cette version — saison, fond de
+profil et face-à-face sur 'Voir le profil'" plus bas pour le détail
 complet.
 
-**Pas de republication des règles Firestore nécessaire pour cette
-version** — toujours le même champ "emojiImageDataUrl" sur un tag, pas
-davantage validé par les règles qu'avant. Republie quand même les
-fichiers (voir "Mise à jour" ci-dessous).
+**Republication des règles Firestore nécessaire pour cette version** —
+nouvelle collection `profileBgs` (fonds de profil créés par
+l'organisateur) et nouveau champ `profileBg` sur chaque compte joueur.
+Voir "Mise à jour" ci-dessous : republie bien les fichiers ET les
+règles cette fois-ci.
 
 ---
+
+## Historique — v8.4
+
+Cette version permettait à l'emoji personnalisé d'un tag (importé par
+image, voir v8.3) d'être **animé** : importer un **gif animé** le
+gardait tel quel, avec son animation, au lieu de le figer sur une seule
+image. Voir "Nouveau dans cette version — emoji animé (gif)" plus bas
+pour le détail complet.
 
 ## Historique — v8.3
 
@@ -137,10 +152,12 @@ d'avoir à activer un mode payant.
    changes"). `js/firebase-config.js` contient déjà tes vraies clés et ton
    email organisateur, pas besoin d'y retoucher.
 
-2. **Republie les règles Firestore** (pas de changement de règle dans
-   cette version précise, mais autant garder l'habitude et être sûr que
-   c'est bien synchronisé) : Firebase Console > Firestore Database >
-   onglet "Règles" > remplace tout le contenu par celui de
+2. **Republie les règles Firestore** (indispensable pour la v8.5 : nouvelle
+   collection `profileBgs` et nouveau champ `profileBg` sur les comptes —
+   voir plus haut ; pour une version qui ne change rien aux règles, autant
+   quand même garder l'habitude de les republier à chaque fois, pour être
+   sûr que tout reste synchronisé) : Firebase Console > Firestore Database
+   > onglet "Règles" > remplace tout le contenu par celui de
    `firestore.rules` > "Publier". Vérifie bien qu'il n'y a **pas de
    message d'erreur en rouge** après avoir cliqué sur "Publier", et qu'un
    indicateur du style "Dernière publication : à l'instant" apparaît en
@@ -554,6 +571,49 @@ condition de victoire configurée** ne contribue à aucun point cumulé (ni
 pour l'un ni pour l'autre joueur), et une performance qui dépasserait
 100% (ex. un score supérieur à la condition) est plafonnée à 100 pour ce
 match, pour ne pas avantager artificiellement un score disproportionné.
+
+## Nouveau dans cette version — saison, fond de profil et face-à-face sur "Voir le profil"
+
+### Victoires/défaites de la saison en cours
+
+La popup **"Voir le profil"** (et la fiche de recherche organisateur)
+affichait déjà les points de la saison en cours — elle affiche
+maintenant aussi le nombre de **victoires et de défaites** de cette
+saison, à côté des points : ex. « 4 pts — 1V / 1D — Saison 3 en cours ».
+
+### Fond de profil personnalisé
+
+Nouveau catalogue **"Fond de profil"**, débloqué par l'organisateur
+exactement comme une décoration ou un thème (attribution individuelle
+depuis la recherche de joueur, puis activation par le joueur dans
+Paramètres > Personnalisation). Une fois activé, le fond choisi
+s'affiche en arrière-plan, légèrement estompé, derrière la fiche profil
+— sur l'écran d'accueil (ta propre fiche), dans la popup "Voir le
+profil" et dans la fiche de recherche organisateur, partout de la même
+façon.
+
+Pour en créer un (Espace organisateur > Fonds de profil) : donne-lui un
+nom, importe une image (recadrée/compressée automatiquement), ou
+télécharge d'abord le **gabarit (1200×700)** pour composer l'image aux
+bonnes proportions dans ton logiciel préféré. Comme les décorations, un
+fond créé démarre "non publié" (visible seulement par toi le temps de le
+préparer) — publie-le pour qu'il devienne attribuable à un joueur.
+
+### Face-à-face entre toi et le joueur consulté
+
+La popup "Voir le profil" (et la fiche de recherche organisateur)
+affiche maintenant directement le **bilan des matchs entre toi et cette
+personne** : combien de fois tu l'as battue, combien de fois elle t'a
+battu, tous duels confondus depuis toujours (pas seulement la saison en
+cours). S'il n'y a encore aucun match entre vous deux, un message
+l'indique clairement plutôt que d'afficher "0V / 0D".
+
+### Victoires en vert, défaites en rouge
+
+Partout où un total victoires/défaites est affiché sur ces fiches
+profil (total à vie, saison en cours, face-à-face), les victoires
+s'affichent maintenant en vert et les défaites en rouge — plus rapide à
+lire d'un coup d'œil qu'un simple texte "V / D".
 
 ## Nouveau dans cette version — emoji animé (gif)
 
