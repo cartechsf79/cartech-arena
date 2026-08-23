@@ -39,9 +39,12 @@ import {
   contrastTextColor,
   compressStaticDecoImage,
   compressThemeBgImage,
+  compressTagEmojiImage,
   fileToRawDataUrl,
   MAX_ANIMATED_DECO_BYTES,
   MAX_THEME_BG_BYTES,
+  MAX_TAG_EMOJI_BYTES,
+  MAX_ANIMATED_TAG_EMOJI_BYTES,
   createDecoration,
   updateDecoration,
   deleteDecoration,
@@ -51,6 +54,7 @@ import {
   createTag,
   updateTag,
   deleteTag,
+  getTagIcon,
   getAllGames,
   createGame,
   getGameWinCondition,
@@ -58,6 +62,7 @@ import {
   winConditionLabel,
   downloadDecorationTemplate,
   downloadThemeBgTemplate,
+  downloadTagEmojiTemplate,
 } from "./live-catalog.js";
 import { fetchCareerStats } from "./season.js";
 
@@ -309,10 +314,18 @@ function escapeHtml(str) {
   return d.innerHTML;
 }
 
-// Nom d'un tag précédé de son emoji, s'il en a un — utilisé partout où un
-// tag est affiché (grilles, pastilles sur un profil...).
+// Nom d'un tag précédé de son icône (image personnalisée en priorité, sinon
+// emoji texte, sinon rien) — utilisé partout où un tag est affiché (grilles,
+// pastilles sur un profil...).
 function tagLabelHtml(tag) {
-  return (tag.emoji ? escapeHtml(tag.emoji) + " " : "") + escapeHtml(tag.name);
+  const icon = getTagIcon(tag);
+  if (icon.type === "image") {
+    return `<img class="tag-emoji-img" src="${icon.value}" alt=""> ${escapeHtml(tag.name)}`;
+  }
+  if (icon.type === "emoji") {
+    return escapeHtml(icon.value) + " " + escapeHtml(tag.name);
+  }
+  return escapeHtml(tag.name);
 }
 
 // ---------------------------------------------------------------------------
@@ -709,6 +722,7 @@ let editingDecoCurrent = null; // { imageDataUrl, type } de la décoration en co
 let editingThemeId = null;
 let editingThemeBgDataUrl = null; // image de fond en cours (déjà enregistrée ou tout juste importée), ou null
 let editingTagId = null;
+let editingTagEmojiImageDataUrl = null; // emoji personnalisé (image) en cours, ou null
 
 function renderOrganizerCatalogPanel() {
   const section = $("#section-organizer-catalog");
@@ -1029,12 +1043,62 @@ function renderTagManageList() {
   });
 }
 
+function updateTagEmojiPreview() {
+  const preview = $("#admin-tag-emoji-preview");
+  const removeBtn = $("#admin-tag-emoji-remove");
+  if (!preview) return;
+  if (editingTagEmojiImageDataUrl) {
+    preview.src = editingTagEmojiImageDataUrl;
+    preview.style.display = "";
+    if (removeBtn) removeBtn.style.display = "";
+  } else {
+    preview.removeAttribute("src");
+    preview.style.display = "none";
+    if (removeBtn) removeBtn.style.display = "none";
+  }
+}
+
+async function handleTagEmojiFileChosen(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  if (file.size > 8_000_000) {
+    showToast("Cette image est trop lourde à importer (8 Mo max avant compression).", true);
+    return;
+  }
+  try {
+    if (file.type === "image/gif") {
+      // Gif animé : gardé tel quel (un recadrage/une recompression via
+      // canvas "gèlerait" l'animation sur une seule image), juste
+      // plafonné en taille — comme les décorations animées.
+      if (file.size > MAX_ANIMATED_TAG_EMOJI_BYTES) {
+        showToast("Ce gif animé est trop lourd (environ 300 Ko max) — choisis-en un plus léger.", true);
+        return;
+      }
+      editingTagEmojiImageDataUrl = await fileToRawDataUrl(file);
+    } else {
+      editingTagEmojiImageDataUrl = await compressTagEmojiImage(file);
+    }
+    updateTagEmojiPreview();
+  } catch (err) {
+    showToast("Impossible de lire cette image.", true);
+  }
+}
+
+function handleTagEmojiRemove() {
+  editingTagEmojiImageDataUrl = null;
+  $("#admin-tag-emoji-file").value = "";
+  updateTagEmojiPreview();
+}
+
 function startEditTag(tag) {
   editingTagId = tag.id;
   $("#admin-tag-name").value = tag.name;
   $("#admin-tag-color").value = tag.color;
   $("#admin-tag-emoji").value = tag.emoji || "";
   $("#admin-tag-default").checked = !!tag.defaultOwned;
+  editingTagEmojiImageDataUrl = tag.emojiImageDataUrl || null;
+  $("#admin-tag-emoji-file").value = "";
+  updateTagEmojiPreview();
   $("#admin-tag-submit").textContent = "Enregistrer les modifications";
   $("#admin-tag-cancel").style.display = "";
   renderTagManageList();
@@ -1045,6 +1109,8 @@ function cancelEditTag() {
   $("#form-admin-tag")?.reset();
   $("#admin-tag-color").value = "#8b5cf6";
   $("#admin-tag-emoji").value = "";
+  editingTagEmojiImageDataUrl = null;
+  updateTagEmojiPreview();
   $("#admin-tag-submit").textContent = "Créer le tag";
   $("#admin-tag-cancel").style.display = "none";
   renderTagManageList();
@@ -1062,10 +1128,16 @@ async function handleAdminTagSubmit(e) {
   }
   try {
     if (editingTagId) {
-      await updateTag(editingTagId, { name, color, emoji: emoji || null, defaultOwned });
+      await updateTag(editingTagId, {
+        name,
+        color,
+        emoji: emoji || null,
+        defaultOwned,
+        emojiImageDataUrl: editingTagEmojiImageDataUrl || null,
+      });
       showToast("Tag modifié !");
     } else {
-      await createTag({ name, color, emoji, defaultOwned });
+      await createTag({ name, color, emoji, defaultOwned, emojiImageDataUrl: editingTagEmojiImageDataUrl });
       showToast("Tag créé !");
     }
     cancelEditTag();
@@ -1293,6 +1365,9 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#btn-download-theme-bg-template")?.addEventListener("click", downloadThemeBgTemplate);
   $("#form-admin-tag")?.addEventListener("submit", handleAdminTagSubmit);
   $("#admin-tag-cancel")?.addEventListener("click", cancelEditTag);
+  $("#admin-tag-emoji-file")?.addEventListener("change", handleTagEmojiFileChosen);
+  $("#admin-tag-emoji-remove")?.addEventListener("click", handleTagEmojiRemove);
+  $("#btn-download-tag-emoji-template")?.addEventListener("click", downloadTagEmojiTemplate);
   $("#form-admin-game")?.addEventListener("submit", handleAdminGameSubmit);
 
   // Les catalogues (décorations/thèmes/tags) peuvent changer pendant que

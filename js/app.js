@@ -19,7 +19,7 @@ import {
 
 import { auth, db, ORGANIZER_EMAIL } from "./firebase-init.js";
 import { DEFAULT_OWNED_THEMES } from "./catalog.js";
-import { startLiveCatalogs, stopLiveCatalogs, findAnyDecoration, findAnyTag, applyThemeLive, contrastTextColor } from "./live-catalog.js";
+import { startLiveCatalogs, stopLiveCatalogs, findAnyDecoration, findAnyTag, applyThemeLive, contrastTextColor, getTagIcon } from "./live-catalog.js";
 import { startHomePlayersListener, stopHomePlayersListener } from "./home-players.js";
 import { startSeasonBannerListener, stopSeasonBannerListener, startCareerStatsListener, stopCareerStatsListener, fetchCareerStats } from "./season.js";
 
@@ -323,10 +323,16 @@ function renderPlayerProfileModalContent(targetUid, profile, career) {
   const activeTags = (profile.tags?.active || []).map((id) => findAnyTag(id)).filter(Boolean);
   const tagsHtml = activeTags.length
     ? activeTags
-        .map(
-          (t) =>
-            `<span class="tag-pill" style="background:${t.color};color:${contrastTextColor(t.color)};">${t.emoji ? escapeHtmlLocal(t.emoji) + " " : ""}${escapeHtmlLocal(t.name)}</span>`
-        )
+        .map((t) => {
+          const icon = getTagIcon(t);
+          const iconHtml =
+            icon.type === "image"
+              ? `<img class="tag-emoji-img" src="${icon.value}" alt=""> `
+              : icon.type === "emoji"
+              ? escapeHtmlLocal(icon.value) + " "
+              : "";
+          return `<span class="tag-pill" style="background:${t.color};color:${contrastTextColor(t.color)};">${iconHtml}${escapeHtmlLocal(t.name)}</span>`;
+        })
         .join(" ")
     : `<span class="settings-note">Aucun tag affiché.</span>`;
   const canManage = getCurrentProfile()?.role === "organisateur" && targetUid !== getCurrentUid();

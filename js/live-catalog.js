@@ -44,6 +44,14 @@ export const MAX_ANIMATED_DECO_BYTES = 900_000;
 // large que les décorations mais toujours bien sous la limite de 1 Mo par
 // document Firestore.
 export const MAX_THEME_BG_BYTES = 700_000;
+// Emoji personnalisé d'un tag : une toute petite icône (affichée à ~16px),
+// donc une marge bien plus stricte que les décorations suffit largement.
+export const MAX_TAG_EMOJI_BYTES = 150_000;
+// Emoji personnalisé animé (gif) : gardé tel quel, comme les décorations
+// animées, car un recadrage/une recompression via canvas ferait perdre
+// l'animation (une seule image serait "gelée"). Toujours plafonné plus bas
+// que les décorations animées puisque l'icône reste minuscule à l'affichage.
+export const MAX_ANIMATED_TAG_EMOJI_BYTES = 300_000;
 
 // ---------------------------------------------------------------------------
 // Écoute temps réel — démarrée une seule fois après connexion (voir app.js)
@@ -189,6 +197,17 @@ export function usableTagsFor(profile) {
   return liveTags.filter((t) => t.defaultOwned || owned.has(t.id));
 }
 
+// Icône d'un tag à afficher : l'image personnalisée est prioritaire si elle
+// existe, sinon l'emoji texte, sinon rien. Retourne un objet générique
+// (plutôt que du HTML déjà construit) pour rester réutilisable tel quel dans
+// n'importe quel fichier d'affichage (settings.js, app.js...) sans dépendre
+// d'une fonction d'échappement HTML particulière.
+export function getTagIcon(tag) {
+  if (tag?.emojiImageDataUrl) return { type: "image", value: tag.emojiImageDataUrl };
+  if (tag?.emoji) return { type: "emoji", value: tag.emoji };
+  return { type: "none", value: null };
+}
+
 // ---------------------------------------------------------------------------
 // Thème — gère aussi bien les 6 thèmes de base (via les classes CSS
 // existantes body[data-theme=...]) que les thèmes personnalisés créés par
@@ -289,6 +308,30 @@ export async function compressStaticDecoImage(file) {
     dataUrl = canvas.toDataURL("image/png");
     side -= 80;
   } while (dataUrl.length > MAX_STATIC_DECO_BYTES && side > 80);
+  return dataUrl;
+}
+
+// Compression d'un emoji personnalisé (image) : recadrée automatiquement au
+// centre en carré (l'icône s'affiche toujours petite et ronde, ~16px), puis
+// réduite par paliers jusqu'à passer sous MAX_TAG_EMOJI_BYTES. PNG pour
+// garder la transparence (ex. un logo sur fond transparent).
+export async function compressTagEmojiImage(file) {
+  const img = await fileToImage(file);
+  const srcSize = Math.min(img.width, img.height);
+  const srcX = Math.round((img.width - srcSize) / 2);
+  const srcY = Math.round((img.height - srcSize) / 2);
+  let side = 160;
+  let dataUrl = "";
+  do {
+    const canvas = document.createElement("canvas");
+    canvas.width = side;
+    canvas.height = side;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, side, side);
+    ctx.drawImage(img, srcX, srcY, srcSize, srcSize, 0, 0, side, side);
+    dataUrl = canvas.toDataURL("image/png");
+    side -= 20;
+  } while (dataUrl.length > MAX_TAG_EMOJI_BYTES && side > 20);
   return dataUrl;
 }
 
@@ -418,6 +461,48 @@ export function downloadThemeBgTemplate() {
   triggerDownload(canvas.toDataURL("image/png"), "gabarit-fond-theme-1080x1920.png");
 }
 
+// Gabarit pour un emoji personnalisé de tag : l'icône est toujours recadrée
+// en carré au centre puis affichée en rond à très petite taille (~16px), donc
+// le gabarit marque un large cercle de sécurité au centre — tout ce qui sort
+// de ce cercle (les coins de l'image) sera invisible à l'affichage.
+export function downloadTagEmojiTemplate() {
+  const SIZE = 512;
+  const canvas = document.createElement("canvas");
+  canvas.width = SIZE;
+  canvas.height = SIZE;
+  const ctx = canvas.getContext("2d");
+
+  const cell = 16;
+  for (let y = 0; y < SIZE; y += cell) {
+    for (let x = 0; x < SIZE; x += cell) {
+      ctx.fillStyle = (x / cell + y / cell) % 2 === 0 ? "#f0f0f0" : "#ffffff";
+      ctx.fillRect(x, y, cell, cell);
+    }
+  }
+
+  const cx = SIZE / 2;
+  const cy = SIZE / 2;
+  const radius = SIZE / 2 - 8;
+
+  ctx.save();
+  ctx.strokeStyle = "#ff2d55";
+  ctx.lineWidth = 4;
+  ctx.setLineDash([14, 10]);
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle = "#ff2d55";
+  ctx.textAlign = "center";
+  ctx.font = "bold 22px sans-serif";
+  ctx.fillText("Zone visible = cercle (icône affichée toute petite et ronde)", cx, 34);
+  ctx.font = "18px sans-serif";
+  ctx.fillText(`Image carrée ${SIZE}×${SIZE} px, fond transparent conseillé (gif animé aussi accepté)`, cx, SIZE - 20);
+
+  triggerDownload(canvas.toDataURL("image/png"), "gabarit-emoji-tag-512x512.png");
+}
+
 // ---------------------------------------------------------------------------
 // Actions organisateur — création / modification de décorations, thèmes,
 // tags. Les règles Firestore revérifient le rôle ; ces fonctions ne servent
@@ -459,12 +544,17 @@ export async function deleteTheme(id) {
 
 // emoji est facultatif (ex. "🏅") — affiché juste avant le nom du tag
 // partout où il apparaît (grilles de sélection, pastilles sur un profil...).
-export async function createTag({ name, color, defaultOwned, emoji }) {
+// emojiImageDataUrl est un emoji personnalisé importé par image (facultatif
+// lui aussi) : s'il est défini, il prend le pas sur l'emoji texte à
+// l'affichage (voir getTagIcon ci-dessus) sans jamais l'effacer — repasser
+// emojiImageDataUrl à null (via updateTag) suffit à revenir à l'emoji texte.
+export async function createTag({ name, color, defaultOwned, emoji, emojiImageDataUrl }) {
   await addDoc(tagsCol, {
     name: name.trim(),
     color,
     defaultOwned: !!defaultOwned,
     emoji: (emoji || "").trim() || null,
+    emojiImageDataUrl: emojiImageDataUrl || null,
     createdAt: serverTimestamp(),
   });
 }

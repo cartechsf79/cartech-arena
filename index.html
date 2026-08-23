@@ -301,6 +301,12 @@
           <input type="text" id="admin-tag-name" maxlength="24" required>
           <label for="admin-tag-emoji">Emoji (optionnel)</label>
           <input type="text" id="admin-tag-emoji" maxlength="8" placeholder="🏅">
+          <label for="admin-tag-emoji-file">Ou un emoji personnalisé importé par image (facultatif, prioritaire sur l'emoji ci-dessus)</label>
+          <input type="file" id="admin-tag-emoji-file" accept="image/*">
+          <img id="admin-tag-emoji-preview" alt="Aperçu de l'emoji" style="display:none;max-width:64px;max-height:64px;border-radius:50%;margin:6px 0;">
+          <button class="btn btn-ghost" type="button" id="admin-tag-emoji-remove" style="display:none;">Retirer l'image</button>
+          <button class="btn btn-ghost" type="button" id="btn-download-tag-emoji-template">⬇️ Télécharger le gabarit (512×512)</button>
+          <p class="settings-note">Le gabarit indique la zone visible (cercle) — l'icône s'affiche toute petite et ronde, les coins de l'image seront invisibles. Un gif animé fonctionne aussi (gardé tel quel, ~300 Ko max) — une image fixe est recadrée et compressée automatiquement.</p>
           <label for="admin-tag-color">Couleur</label>
           <input type="color" id="admin-tag-color" value="#8b5cf6">
           <label class="checkbox-label"><input type="checkbox" id="admin-tag-default"> Disponible pour tout le monde dès la création du compte</label>

@@ -1,21 +1,35 @@
-# Car'Tech Arena — v8.2
+# Car'Tech Arena — v8.4
 
-Cette version ajoute la possibilité de mettre un **emoji sur un tag** de
-profil, et un vrai **indicatif de joueur** sur les fiches profil (écran
-d'accueil, "Voir le profil", recherche organisateur) : des **points,
-victoires et défaites calculés à vie** (depuis la création du compte),
-affichés **avec** les points de la **saison en cours**, pour avoir une
-vision complète sans changer d'écran. Voir "Nouveau dans cette version —
-emoji sur les tags et indicatif de joueur à vie" plus bas pour le détail
+Cette version permet à l'emoji personnalisé d'un tag (importé par image,
+voir v8.3) d'être **animé** : importer un **gif animé** le garde tel
+quel, avec son animation, au lieu de le figer sur une seule image. Voir
+"Nouveau dans cette version — emoji animé (gif)" plus bas pour le détail
 complet.
 
 **Pas de republication des règles Firestore nécessaire pour cette
-version** — le nouveau champ "emoji" sur un tag n'est pas davantage
-validé par les règles que les autres champs de ce catalogue (déjà
-organisateur-only). Republie quand même les fichiers (voir "Mise à jour"
-ci-dessous).
+version** — toujours le même champ "emojiImageDataUrl" sur un tag, pas
+davantage validé par les règles qu'avant. Republie quand même les
+fichiers (voir "Mise à jour" ci-dessous).
 
 ---
+
+## Historique — v8.3
+
+Cette version ajoutait la possibilité de mettre, sur un tag, un **emoji
+personnalisé importé depuis une image** (en plus de l'emoji texte déjà
+existant) — avec un **gabarit téléchargeable** pour préparer l'image aux
+bonnes proportions. Voir "Nouveau dans cette version — emoji personnalisé
+par image" plus bas pour le détail complet.
+
+## Historique — v8.2
+
+Cette version ajoutait la possibilité de mettre un **emoji sur un tag**
+de profil, et un vrai **indicatif de joueur** sur les fiches profil
+(écran d'accueil, "Voir le profil", recherche organisateur) : des
+**points, victoires et défaites calculés à vie** (depuis la création du
+compte), affichés **avec** les points de la **saison en cours**. Voir
+"Nouveau dans cette version — emoji sur les tags et indicatif de joueur à
+vie" plus bas pour le détail complet.
 
 ## Historique — v8.1
 
@@ -540,6 +554,65 @@ condition de victoire configurée** ne contribue à aucun point cumulé (ni
 pour l'un ni pour l'autre joueur), et une performance qui dépasserait
 100% (ex. un score supérieur à la condition) est plafonnée à 100 pour ce
 match, pour ne pas avantager artificiellement un score disproportionné.
+
+## Nouveau dans cette version — emoji animé (gif)
+
+L'emoji personnalisé par image (voir v8.3 ci-dessous) accepte maintenant
+les **gifs animés** : en important un fichier `.gif`, l'organisateur
+récupère son animation intacte sur le tag, partout où il s'affiche
+(grille de personnalisation, liste de gestion, popup "Voir le profil",
+recherche organisateur) — exactement comme les décorations animées déjà
+proposées ailleurs dans l'appli.
+
+### Comment ça marche
+
+- **Gif animé** : gardé **tel quel** (aucun recadrage ni recompression,
+  qui figerait l'animation sur une seule image) — juste plafonné à
+  **300 Ko environ**. Si le fichier dépasse cette taille, un message
+  demande d'en choisir un plus léger.
+- **Image fixe** (JPEG, PNG, WebP...) : comportement inchangé depuis la
+  v8.3 — recadrée automatiquement en carré puis compressée.
+
+La détection est automatique (selon le type du fichier importé) : pas de
+case à cocher ni de choix à faire, il suffit d'importer un gif pour que
+l'emoji devienne animé. Le gabarit téléchargeable (512×512, zone visible
+en cercle) reste valable pour composer un gif animé — la zone hors du
+cercle sera simplement invisible à l'affichage, comme pour une image
+fixe.
+
+## Nouveau dans cette version — emoji personnalisé par image
+
+Dans **Espace organisateur > Tags**, en plus du champ "Emoji" (texte)
+déjà existant, un nouveau champ facultatif permet d'**importer une
+image** comme emoji du tag — utile pour un logo de jeu, un blason de
+club, ou tout visuel qui n'existe pas comme emoji classique.
+
+### Comment ça marche
+
+1. Un bouton **"⬇️ Télécharger le gabarit (512×512)"** télécharge une
+   image de départ (carrée, fond en damier = transparence) avec un
+   **cercle en pointillés** qui marque la zone réellement visible :
+   l'icône s'affiche toute petite et **ronde** partout dans l'appli
+   (~14 px), donc tout ce qui dépasse le cercle (les coins de l'image)
+   ne sera jamais visible. Ouvre ce gabarit dans ton logiciel d'image
+   (Photoshop, GIMP, Canva...), dessine ton visuel à l'intérieur du
+   cercle, exporte en PNG (fond transparent conseillé), puis reviens
+   l'importer.
+2. Dans le formulaire de tag, le champ **"Ou un emoji personnalisé
+   importé par image"** accepte n'importe quelle image (elle n'a pas
+   besoin d'être déjà carrée : elle est **recadrée automatiquement au
+   centre en carré**, puis compressée). Un aperçu rond s'affiche
+   immédiatement, avec un bouton "Retirer l'image" pour annuler.
+3. **L'image, si elle est définie, prend toujours le pas sur l'emoji
+   texte** à l'affichage — mais l'emoji texte n'est jamais effacé pour
+   autant : retirer l'image (bouton "Retirer l'image" puis
+   enregistrer) fait immédiatement retomber l'affichage sur l'emoji
+   texte s'il y en a un, ou sur rien du tout sinon.
+
+L'emoji image apparaît exactement aux mêmes endroits que l'emoji texte :
+la grille de personnalisation d'un joueur, la liste de gestion
+organisateur, les pastilles sur une fiche profil ("Voir le profil",
+recherche organisateur).
 
 ## Nouveau dans cette version — emoji sur les tags et indicatif de joueur à vie
 
