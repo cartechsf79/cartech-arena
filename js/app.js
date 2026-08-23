@@ -243,10 +243,13 @@ export function renderAvatar(container, profile, size = 54) {
 
 // Fond de profil (facultatif, débloqué par l'organisateur comme une
 // décoration/un thème) : affiché en arrière-plan, légèrement estompé (voir
-// .profile-bg-card dans style.css), derrière une fiche profil entière —
-// réutilisé sur l'accueil (sa propre fiche), la popup "Voir le profil" et la
-// fiche de recherche organisateur, pour que ça reste cohérent partout où le
-// profil d'un joueur est affiché (même logique que renderAvatar ci-dessus).
+// .profile-bg-card dans style.css), derrière TOUTE la zone du profil (pas
+// juste une petite carte à l'intérieur) — réutilisé sur l'accueil (sa propre
+// fiche, tout le #profile-card), la popup "Voir le profil" (toute la
+// fenêtre : titre, carte et bouton "Gérer ce joueur" compris) et la fiche de
+// recherche organisateur (carte + tags), pour que ça reste cohérent partout
+// où le profil d'un joueur est affiché (même logique que renderAvatar
+// ci-dessus).
 export function applyProfileBackground(el, profile) {
   if (!el) return;
   el.classList.add("profile-bg-card");
@@ -390,7 +393,7 @@ function renderPlayerProfileModalContent(targetUid, profile, career, headToHead)
     : "";
 
   body.innerHTML = `
-    <div class="player-card profile-bg-card" style="margin-top:0;" id="player-modal-card">
+    <div class="player-card" style="margin-top:0;" id="player-modal-card">
       <div class="avatar-shell" id="player-modal-avatar"></div>
       <div class="player-card-info">
         <div style="font-weight:800;">${escapeHtmlLocal(profile.pseudo)}</div>
@@ -404,7 +407,10 @@ function renderPlayerProfileModalContent(targetUid, profile, career, headToHead)
     ${canManage ? `<button class="btn btn-ghost" type="button" id="player-modal-manage-btn">Gérer ce joueur →</button>` : ""}
   `;
   renderAvatar($("#player-modal-avatar"), profile, 56);
-  applyProfileBackground($("#player-modal-card"), profile);
+  // Le fond de profil s'applique à toute la fenêtre de la popup (titre, carte
+  // et bouton "Gérer ce joueur" compris), pas seulement à la petite carte —
+  // voir #player-profile-modal dans index.html.
+  applyProfileBackground($("#player-profile-modal"), profile);
   $("#player-modal-manage-btn")?.addEventListener("click", () => {
     closePlayerProfileModal();
     document.dispatchEvent(new CustomEvent("cartech:manage-player", { detail: { uid: targetUid } }));

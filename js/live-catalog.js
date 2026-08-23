@@ -215,8 +215,11 @@ export function isTagUsable(tagId, owned) {
 
 // Tags que ce profil peut choisir d'afficher : les siens + les tags "par
 // défaut" du catalogue (même si "owned" n'a pas encore été mis à jour pour
-// ce compte, ex. un tag par défaut créé après l'inscription).
+// ce compte, ex. un tag par défaut créé après l'inscription). L'organisateur
+// a tout de débloqué d'office sur son propre compte, pour pouvoir tester
+// n'importe quel tag sans avoir à se l'attribuer lui-même.
 export function usableTagsFor(profile) {
+  if (profile?.role === "organisateur") return liveTags;
   const owned = new Set(profile?.tags?.owned || []);
   return liveTags.filter((t) => t.defaultOwned || owned.has(t.id));
 }

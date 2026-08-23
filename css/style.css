@@ -202,10 +202,12 @@ input[type=range] { width: 100%; margin: 6px 0 4px; accent-color: var(--accent);
 .stat-loss { color: var(--danger); font-weight: 800; }
 
 /* ---- fond de profil (facultatif, débloqué par l'organisateur) : image
-   affichée en arrière-plan, estompée, derrière une fiche profil entière
-   (#profile-card sur l'accueil, .player-card dans "Voir le profil" et la
-   recherche organisateur) — voir applyProfileBackground() dans app.js, qui
-   pose la variable --profile-bg-image utilisée ci-dessous. ---- */
+   affichée en arrière-plan, estompée, derrière TOUTE la zone du profil
+   (#profile-card sur l'accueil ; #player-profile-modal — titre, carte et
+   bouton "Gérer ce joueur" compris — dans la popup "Voir le profil" ; et
+   .search-profile-zone dans la recherche organisateur) — voir
+   applyProfileBackground() dans app.js, qui pose la variable
+   --profile-bg-image utilisée ci-dessous. ---- */
 .profile-bg-card { position: relative; overflow: hidden; }
 .profile-bg-card.has-profile-bg::before {
   content: "";

@@ -1,24 +1,42 @@
-# Car'Tech Arena — v8.5
+# Car'Tech Arena — v8.6
 
-Cette version ajoute trois choses à la popup **"Voir le profil"** et à la
-personnalisation : les **victoires/défaites de la saison en cours**
+Cette version ajoute deux améliorations demandées après la v8.5. D'abord,
+ton compte **organisateur a maintenant toutes les décorations, tous les
+thèmes, tous les tags et tous les fonds de profil débloqués d'office** —
+tu peux tout essayer directement sur ton propre profil sans devoir
+d'abord te les attribuer toi-même depuis la recherche organisateur (les
+comptes joueurs ne sont pas concernés : ils doivent toujours recevoir
+chaque élément normalement). Ensuite, le **fond de profil s'affiche
+maintenant sur toute la zone du profil** — dans la popup "Voir le
+profil", ça couvre maintenant le titre, la carte ET le bouton "Gérer ce
+joueur", pas seulement une petite carte à l'intérieur ; pareil dans la
+fiche de recherche organisateur. Voir "Nouveau dans cette version —
+organisateur tout débloqué &amp; fond de profil sur toute la fenêtre"
+plus bas pour le détail complet.
+
+**Pas de republication des règles Firestore nécessaire pour cette
+version** — seuls les fichiers du site changent. (Si tu avais eu le
+souci "un fond de profil créé n'apparaissait nulle part" juste après
+avoir mis la v8.5, c'était réglé en republiant à nouveau, en entier, le
+fichier de règles — rien à refaire ici si ça fonctionne déjà.)
+
+---
+
+## Historique — v8.5
+
+Cette version ajoutait trois choses à la popup **"Voir le profil"** et à
+la personnalisation : les **victoires/défaites de la saison en cours**
 (en plus des points), un nouveau **fond de profil** personnalisable
 (débloqué par l'organisateur, comme les décorations/thèmes), avec son
 **gabarit téléchargeable**, et le **face-à-face** entre toi et la
 personne dont tu regardes le profil (combien de fois vous vous êtes
-affrontés, et qui a gagné). Les victoires s'affichent maintenant en
-**vert** et les défaites en **rouge** partout où un total victoires/
-défaites apparaît. Voir "Nouveau dans cette version — saison, fond de
-profil et face-à-face sur 'Voir le profil'" plus bas pour le détail
-complet.
+affrontés, et qui a gagné). Les victoires s'affichent en **vert** et les
+défaites en **rouge** partout où un total victoires/défaites apparaît.
+Voir "Nouveau dans cette version — saison, fond de profil et face-à-face
+sur 'Voir le profil'" plus bas pour le détail complet.
 
-**Republication des règles Firestore nécessaire pour cette version** —
-nouvelle collection `profileBgs` (fonds de profil créés par
-l'organisateur) et nouveau champ `profileBg` sur chaque compte joueur.
-Voir "Mise à jour" ci-dessous : republie bien les fichiers ET les
-règles cette fois-ci.
-
----
+Elle nécessitait une republication des règles Firestore (nouvelle
+collection `profileBgs`, nouveau champ `profileBg` sur chaque compte).
 
 ## Historique — v8.4
 
@@ -152,17 +170,20 @@ d'avoir à activer un mode payant.
    changes"). `js/firebase-config.js` contient déjà tes vraies clés et ton
    email organisateur, pas besoin d'y retoucher.
 
-2. **Republie les règles Firestore** (indispensable pour la v8.5 : nouvelle
-   collection `profileBgs` et nouveau champ `profileBg` sur les comptes —
-   voir plus haut ; pour une version qui ne change rien aux règles, autant
-   quand même garder l'habitude de les republier à chaque fois, pour être
-   sûr que tout reste synchronisé) : Firebase Console > Firestore Database
-   > onglet "Règles" > remplace tout le contenu par celui de
-   `firestore.rules` > "Publier". Vérifie bien qu'il n'y a **pas de
-   message d'erreur en rouge** après avoir cliqué sur "Publier", et qu'un
+2. **Republie les règles Firestore** (les règles n'ont pas changé depuis la
+   v8.5 — pas obligatoire pour la v8.6 elle-même — mais autant garder
+   l'habitude de les republier à chaque fois, pour être sûr que tout reste
+   synchronisé) : Firebase Console > Firestore Database > onglet "Règles"
+   > sélectionne TOUT le contenu déjà présent et supprime-le d'abord >
+   colle tout le contenu de `firestore.rules` (vérifie qu'il commence par
+   `rules_version = '2';` et finit par une accolade `}` seule sur la
+   dernière ligne) > "Publier". Vérifie bien qu'il n'y a **pas de message
+   d'erreur en rouge** après avoir cliqué sur "Publier", et qu'un
    indicateur du style "Dernière publication : à l'instant" apparaît en
    haut — sinon les anciennes règles restent actives et rien ne change
-   côté site, même si le code (JS/HTML) est à jour.
+   côté site, même si le code (JS/HTML) est à jour (c'est ce genre de
+   collage incomplet qui a causé le souci "fond de profil invisible"
+   juste après la v8.5).
 
 3. Vercel redéploiera automatiquement dès que GitHub reçoit les nouveaux
    fichiers.
@@ -571,6 +592,30 @@ condition de victoire configurée** ne contribue à aucun point cumulé (ni
 pour l'un ni pour l'autre joueur), et une performance qui dépasserait
 100% (ex. un score supérieur à la condition) est plafonnée à 100 pour ce
 match, pour ne pas avantager artificiellement un score disproportionné.
+
+## Nouveau dans cette version — organisateur tout débloqué & fond de profil sur toute la fenêtre
+
+### L'organisateur a tout débloqué d'office
+
+Sur ton propre compte organisateur, dans Paramètres > Personnalisation,
+**toutes les décorations, tous les thèmes (y compris les thèmes
+"Trophée" normalement réservés) et tous les fonds de profil créés
+apparaissent maintenant débloqués**, même si tu ne te les es jamais
+attribués via la recherche organisateur — pareil pour les tags : tous
+ceux créés dans le catalogue te sont utilisables. Objectif : pouvoir
+tester à fond n'importe quel élément que tu crées, sans étape
+supplémentaire. Ça ne change rien pour les autres comptes : un joueur
+continue de devoir recevoir chaque décoration/thème/tag/fond de profil
+normalement, un par un.
+
+### Fond de profil sur toute la fenêtre du profil
+
+Le fond de profil (ajouté en v8.5) ne couvrait que la petite carte à
+l'intérieur de la popup "Voir le profil" — il couvre maintenant **toute
+la fenêtre** : le titre "Profil" en haut, la carte du joueur, et le
+bouton "Gérer ce joueur" en bas. Même chose dans la fiche de recherche
+organisateur (carte + tags). Sur l'écran d'accueil, rien ne change :
+c'était déjà toute la fiche qui était couverte.
 
 ## Nouveau dans cette version — saison, fond de profil et face-à-face sur "Voir le profil"
 

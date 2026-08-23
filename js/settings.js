@@ -355,6 +355,10 @@ function renderDecorationsGrid(profile) {
   grid.innerHTML = "";
   const owned = profile?.decorations?.owned || [];
   const active = profile?.decorations?.active || null;
+  // L'organisateur a tout de débloqué d'office sur son propre compte, pour
+  // pouvoir tester n'importe quelle décoration sans avoir à se l'attribuer
+  // lui-même depuis la recherche organisateur.
+  const isOrg = profile?.role === "organisateur";
 
   const noneChip = document.createElement("div");
   noneChip.className = "chip" + (active === null ? " active" : "");
@@ -369,7 +373,7 @@ function renderDecorationsGrid(profile) {
     (d) => d.builtin || d.published || owned.includes(d.id)
   );
   visible.forEach((deco) => {
-    const isOwned = owned.includes(deco.id);
+    const isOwned = isOrg || owned.includes(deco.id);
     const chip = document.createElement("div");
     chip.className = "chip" + (!isOwned ? " locked" : "") + (active === deco.id ? " active" : "");
     const sub = isOwned ? (deco.builtin ? deco.categorie : (deco.type === "animated" ? "🎞️ Animée" : "Statique")) : "🔒 verrouillé";
@@ -408,6 +412,7 @@ function renderProfileBgGrid(profile) {
   grid.innerHTML = "";
   const owned = profile?.profileBg?.owned || [];
   const active = profile?.profileBg?.active || null;
+  const isOrg = profile?.role === "organisateur";
 
   const noneChip = document.createElement("div");
   noneChip.className = "chip" + (active === null ? " active" : "");
@@ -417,10 +422,10 @@ function renderProfileBgGrid(profile) {
 
   // Même règle que les décorations : catalogue publié + tout fond déjà
   // possédé même si dépublié depuis (pour ne jamais faire "disparaître" un
-  // fond qu'un joueur a déjà choisi).
+  // fond qu'un joueur a déjà choisi). L'organisateur voit tout comme débloqué.
   const visible = getAllProfileBgs({ includeUnpublished: true }).filter((b) => b.published || owned.includes(b.id));
   visible.forEach((bg) => {
-    const isOwned = owned.includes(bg.id);
+    const isOwned = isOrg || owned.includes(bg.id);
     const chip = document.createElement("div");
     chip.className = "chip" + (!isOwned ? " locked" : "") + (active === bg.id ? " active" : "");
     chip.innerHTML = `
@@ -459,9 +464,10 @@ function renderThemesGrid(profile) {
   grid.innerHTML = "";
   const owned = profile?.theme?.owned || [];
   const active = profile?.theme?.active || "classique";
+  const isOrg = profile?.role === "organisateur";
 
   getAllThemes().forEach((theme) => {
-    const isOwned = owned.includes(theme.id);
+    const isOwned = isOrg || owned.includes(theme.id);
     const chip = document.createElement("div");
     chip.className = "chip" + (!isOwned ? " locked" : "") + (active === theme.id ? " active" : "");
     chip.innerHTML = `
@@ -623,8 +629,6 @@ async function renderPlayerCard(targetUid, targetProfile) {
     ${headToHeadHtml}
   `;
   card.appendChild(info);
-  resultEl.appendChild(card);
-  applyProfileBackground(card, targetProfile);
 
   const tags = document.createElement("div");
   tags.className = "player-tags";
@@ -639,7 +643,15 @@ async function renderPlayerCard(targetUid, targetProfile) {
   } else {
     tags.textContent = "Aucun tag affiché.";
   }
-  resultEl.appendChild(tags);
+
+  // Le fond de profil couvre toute la fiche de recherche (carte + tags), pas
+  // seulement la petite carte, comme dans la popup "Voir le profil".
+  const profileZone = document.createElement("div");
+  profileZone.className = "search-profile-zone";
+  profileZone.appendChild(card);
+  profileZone.appendChild(tags);
+  resultEl.appendChild(profileZone);
+  applyProfileBackground(profileZone, targetProfile);
 
   if (isOrganizer) {
     resultEl.appendChild(buildOrganizerManagePanel(targetUid, targetProfile));
@@ -1628,6 +1640,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const profile = getCurrentProfile();
     if (profile && $("#view-settings")?.classList.contains("active")) {
       renderDecorationsGrid(profile);
+      renderProfileBgGrid(profile);
       renderThemesGrid(profile);
       renderTagsGrid(profile);
     }
