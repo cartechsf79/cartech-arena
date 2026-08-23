@@ -457,11 +457,14 @@ export async function deleteTheme(id) {
   await deleteDoc(doc(themesCol, id));
 }
 
-export async function createTag({ name, color, defaultOwned }) {
+// emoji est facultatif (ex. "🏅") — affiché juste avant le nom du tag
+// partout où il apparaît (grilles de sélection, pastilles sur un profil...).
+export async function createTag({ name, color, defaultOwned, emoji }) {
   await addDoc(tagsCol, {
     name: name.trim(),
     color,
     defaultOwned: !!defaultOwned,
+    emoji: (emoji || "").trim() || null,
     createdAt: serverTimestamp(),
   });
 }

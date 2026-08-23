@@ -95,10 +95,12 @@
         </div>
 
         <div class="stat-row">
-          <div class="stat-box"><b id="stat-points">0</b><span>Points</span></div>
+          <div class="stat-box"><b id="stat-points">0</b><span>Points (total)</span></div>
           <div class="stat-box"><b id="stat-wins">0</b><span>Victoires</span></div>
           <div class="stat-box"><b id="stat-losses">0</b><span>Défaites</span></div>
+          <div class="stat-box"><b id="stat-season-points">—</b><span>Saison actuelle</span></div>
         </div>
+        <p class="settings-note">Points/victoires/défaites : total depuis la création du compte. Les points cumulent les points de saison gagnés au fil du temps (voir « Saison actuelle »).</p>
 
         <button class="btn btn-primary" id="btn-open-daily-duel" type="button">⚔️ Duel du jour</button>
         <button class="btn btn-primary" id="btn-open-event" type="button">🏆 Événement</button>
@@ -297,6 +299,8 @@
         <form id="form-admin-tag">
           <label for="admin-tag-name">Nom</label>
           <input type="text" id="admin-tag-name" maxlength="24" required>
+          <label for="admin-tag-emoji">Emoji (optionnel)</label>
+          <input type="text" id="admin-tag-emoji" maxlength="8" placeholder="🏅">
           <label for="admin-tag-color">Couleur</label>
           <input type="color" id="admin-tag-color" value="#8b5cf6">
           <label class="checkbox-label"><input type="checkbox" id="admin-tag-default"> Disponible pour tout le monde dès la création du compte</label>

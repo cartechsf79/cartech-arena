@@ -23,6 +23,7 @@ import {
   deleteDoc,
   collection,
   onSnapshot,
+  getDocs,
   arrayUnion,
   serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
@@ -205,6 +206,80 @@ export function buildLeaderboardRows(usersAll, standings) {
 }
 
 // ---------------------------------------------------------------------------
+// "Carrière" d'un joueur — indicateur global affiché sur les fiches profil
+// (accueil, "Voir le profil", recherche organisateur), DISTINCT du
+// classement d'UNE saison ci-dessus :
+//   - "points" (à vie) = somme des points gagnés sur TOUTES les saisons
+//     passées/en cours (même règle 3 victoire / 1 défaite / 15 max par
+//     jour que d'habitude, appliquée saison par saison puis additionnée) —
+//     un match joué en dehors de toute saison ne rapporte donc aucun point.
+//   - "victoires"/"défaites" (à vie) = TOUS les duels du jour terminés
+//     depuis la création du compte, saison ou pas — volontairement plus
+//     large que les points, pour donner une vraie idée de l'activité du
+//     joueur même les périodes sans saison programmée.
+//   - "points de la saison en cours" = juste le sous-total de la saison
+//     actuellement active (si il y en a une), pour avoir la vision
+//     complète (vie entière + saison en cours) sans changer d'écran.
+// ---------------------------------------------------------------------------
+
+// Points gagnés par UN joueur sur UNE saison donnée (même calcul que
+// computeSeasonStandings, mais pour un seul uid — réutilisé à la fois pour
+// le total "à vie" (somme sur toutes les saisons) et pour le sous-total de
+// la saison active).
+function seasonPointsForUid(duels, season, uid) {
+  const dayPoints = {};
+  (duels || []).forEach((d) => {
+    if (d.status !== "termine" || !d.resolvedAt) return;
+    const dateStr = localDateStr(toDate(d.resolvedAt));
+    if (dateStr < season.startDate || dateStr > season.endDate) return;
+    if (!d.resultFrom || !d.resultTo) return;
+    let won;
+    if (d.fromUid === uid) won = !!d.resultFrom.iWon;
+    else if (d.toUid === uid) won = !!d.resultTo.iWon;
+    else return;
+    dayPoints[dateStr] = (dayPoints[dateStr] || 0) + (won ? WIN_POINTS : LOSS_POINTS);
+  });
+  return Object.values(dayPoints).reduce((sum, raw) => sum + Math.min(raw, MAX_POINTS_PER_DAY), 0);
+}
+
+export function computeCareerStats(duels, seasons, uid) {
+  let lifetimeWins = 0;
+  let lifetimeLosses = 0;
+  (duels || []).forEach((d) => {
+    if (d.status !== "termine" || !d.resultFrom || !d.resultTo) return;
+    if (d.fromUid === uid) {
+      if (d.resultFrom.iWon) lifetimeWins += 1;
+      else lifetimeLosses += 1;
+    } else if (d.toUid === uid) {
+      if (d.resultTo.iWon) lifetimeWins += 1;
+      else lifetimeLosses += 1;
+    }
+  });
+
+  const lifetimePoints = (seasons || []).reduce((sum, s) => sum + seasonPointsForUid(duels, s, uid), 0);
+  const active = getActiveSeason(seasons || []);
+  const currentSeasonPoints = active ? seasonPointsForUid(duels, active, uid) : 0;
+
+  return {
+    lifetimePoints,
+    lifetimeWins,
+    lifetimeLosses,
+    currentSeasonPoints,
+    currentSeasonNumber: active ? active.seasonNumber : null,
+  };
+}
+
+// Version "à la demande" (un seul appel réseau, pas d'écoute permanente) —
+// utilisée pour une fiche profil consultée ponctuellement (recherche
+// organisateur, popup "Voir le profil" d'un autre joueur).
+export async function fetchCareerStats(uid) {
+  const [duelsSnap, seasonsSnap] = await Promise.all([getDocs(duelsCol), getDocs(seasonsCol)]);
+  const duels = duelsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const seasonsList = seasonsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  return computeCareerStats(duels, seasonsList, uid);
+}
+
+// ---------------------------------------------------------------------------
 // État local
 // ---------------------------------------------------------------------------
 let seasons = []; // toutes les saisons (passées/actuelle/futures)
@@ -252,6 +327,7 @@ export function startSeasonBannerListener() {
   bannerUnsub = onSnapshot(seasonsCol, (snap) => {
     seasons = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     renderBanner();
+    renderCareerStats();
   });
 }
 export function stopSeasonBannerListener() {
@@ -260,6 +336,47 @@ export function stopSeasonBannerListener() {
   seasons = [];
   bannerListening = false;
   grantAttemptedFor = null;
+}
+
+// ---------------------------------------------------------------------------
+// Stats "carrière" de MOI-MÊME sur l'écran d'accueil (points/victoires/
+// défaites à vie + points de la saison en cours) — démarré/arrêté en même
+// temps que le bandeau de saison. Volontairement léger : un seul compte à
+// recalculer à chaque mise à jour (le mien), pas tous les comptes comme le
+// classement de saison (qui, lui, n'écoute que pendant que l'écran Saison
+// est ouvert).
+// ---------------------------------------------------------------------------
+let careerDuels = [];
+let careerListening = false;
+let careerUnsub = null;
+
+function renderCareerStats() {
+  const uid = getCurrentUid();
+  const elPoints = $("#stat-points");
+  const elWins = $("#stat-wins");
+  const elLosses = $("#stat-losses");
+  const elSeason = $("#stat-season-points");
+  if (!uid || (!elPoints && !elWins && !elLosses && !elSeason)) return;
+  const stats = computeCareerStats(careerDuels, seasons, uid);
+  if (elPoints) elPoints.textContent = stats.lifetimePoints;
+  if (elWins) elWins.textContent = stats.lifetimeWins;
+  if (elLosses) elLosses.textContent = stats.lifetimeLosses;
+  if (elSeason) elSeason.textContent = stats.currentSeasonNumber != null ? stats.currentSeasonPoints : "—";
+}
+
+export function startCareerStatsListener() {
+  if (careerListening) return;
+  careerListening = true;
+  careerUnsub = onSnapshot(duelsCol, (snap) => {
+    careerDuels = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    renderCareerStats();
+  });
+}
+export function stopCareerStatsListener() {
+  careerUnsub?.();
+  careerUnsub = null;
+  careerDuels = [];
+  careerListening = false;
 }
 
 // ---------------------------------------------------------------------------

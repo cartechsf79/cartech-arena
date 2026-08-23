@@ -59,6 +59,7 @@ import {
   downloadDecorationTemplate,
   downloadThemeBgTemplate,
 } from "./live-catalog.js";
+import { fetchCareerStats } from "./season.js";
 
 const MAX_PHOTO_BYTES = 700_000; // marge de sécurité sous la limite de 1 Mo par document Firestore
 const CROP_VIEWPORT = 260; // doit correspondre à la taille CSS de .cropper-viewport
@@ -308,6 +309,12 @@ function escapeHtml(str) {
   return d.innerHTML;
 }
 
+// Nom d'un tag précédé de son emoji, s'il en a un — utilisé partout où un
+// tag est affiché (grilles, pastilles sur un profil...).
+function tagLabelHtml(tag) {
+  return (tag.emoji ? escapeHtml(tag.emoji) + " " : "") + escapeHtml(tag.name);
+}
+
 // ---------------------------------------------------------------------------
 // Décorations (soi-même) — on ne peut que choisir laquelle est active parmi
 // celles déjà débloquées ; le déblocage est réservé à l'organisateur. La
@@ -431,7 +438,7 @@ function renderTagsGrid(profile) {
     chip.className = "chip" + (isActive ? " active" : "");
     chip.innerHTML = `
       <div class="chip-swatch" style="background:${tag.color};"></div>
-      <div class="chip-label">${escapeHtml(tag.name)}</div>
+      <div class="chip-label">${tagLabelHtml(tag)}</div>
       <div class="chip-sub">${isActive ? "✅ Affiché" : "Toucher pour afficher"}</div>
     `;
     chip.onclick = () => toggleActiveTag(tag.id);
@@ -479,7 +486,7 @@ async function handleSearchPlayer(e) {
       return;
     }
     const targetDoc = snap.docs[0];
-    renderPlayerCard(targetDoc.id, targetDoc.data());
+    await renderPlayerCard(targetDoc.id, targetDoc.data());
   } catch (err) {
     showToast(friendlyError(err), true);
   }
@@ -499,17 +506,19 @@ export async function showPlayerProfileScreen(targetUid) {
       return;
     }
     $("#search-player-input").value = snap.data().pseudo || "";
-    renderPlayerCard(targetUid, snap.data());
+    await renderPlayerCard(targetUid, snap.data());
     $("#search-player-result")?.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (err) {
     showToast(friendlyError(err), true);
   }
 }
 
-function renderPlayerCard(targetUid, targetProfile) {
+async function renderPlayerCard(targetUid, targetProfile) {
   const resultEl = $("#search-player-result");
-  resultEl.innerHTML = "";
+  resultEl.innerHTML = `<p class="settings-note">Chargement…</p>`;
   const isOrganizer = getCurrentProfile()?.role === "organisateur";
+  const career = await fetchCareerStats(targetUid);
+  resultEl.innerHTML = "";
 
   const card = document.createElement("div");
   card.className = "player-card";
@@ -520,10 +529,15 @@ function renderPlayerCard(targetUid, targetProfile) {
   const info = document.createElement("div");
   info.className = "player-card-info";
   const isOrg = targetProfile.role === "organisateur";
+  const seasonLine =
+    career.currentSeasonNumber != null
+      ? `${career.currentSeasonPoints} pts — Saison ${career.currentSeasonNumber} en cours`
+      : "Aucune saison en cours";
   info.innerHTML = `
     <div style="font-weight:800;">${targetProfile.pseudo}</div>
     <span class="badge ${isOrg ? "badge-organizer" : "badge-player"}">${isOrg ? "🛡️ Organisateur" : "🎮 Joueur"}</span>
-    <div class="settings-note">${targetProfile.points ?? 0} pts · ${targetProfile.wins ?? 0}V / ${targetProfile.losses ?? 0}D</div>
+    <div class="settings-note">${career.lifetimePoints} pts (total) · ${career.lifetimeWins}V / ${career.lifetimeLosses}D (tous matchs)</div>
+    <div class="settings-note">${seasonLine}</div>
   `;
   card.appendChild(info);
   resultEl.appendChild(card);
@@ -535,7 +549,7 @@ function renderPlayerCard(targetUid, targetProfile) {
     tags.innerHTML = activeTags
       .map(
         (t) =>
-          `<span class="tag-pill" style="background:${t.color};color:${contrastTextColor(t.color)};">${escapeHtml(t.name)}</span>`
+          `<span class="tag-pill" style="background:${t.color};color:${contrastTextColor(t.color)};">${tagLabelHtml(t)}</span>`
       )
       .join(" ");
   } else {
@@ -585,7 +599,7 @@ function buildOrganizerManagePanel(targetUid, targetProfile) {
         }
         await updateDoc(doc(db, "users", targetUid), patch);
         const snap = await getDoc(doc(db, "users", targetUid));
-        renderPlayerCard(targetUid, snap.data());
+        await renderPlayerCard(targetUid, snap.data());
         showToast(owned ? "Décoration retirée." : "Décoration attribuée !");
       } catch (err) {
         showToast(friendlyError(err), true);
@@ -625,7 +639,7 @@ function buildOrganizerManagePanel(targetUid, targetProfile) {
         }
         await updateDoc(doc(db, "users", targetUid), patch);
         const snap = await getDoc(doc(db, "users", targetUid));
-        renderPlayerCard(targetUid, snap.data());
+        await renderPlayerCard(targetUid, snap.data());
         showToast(owned ? "Thème retiré." : "Thème attribué !");
       } catch (err) {
         showToast(friendlyError(err), true);
@@ -655,7 +669,7 @@ function buildOrganizerManagePanel(targetUid, targetProfile) {
       chip.className = "chip" + (owned ? " active" : "");
       chip.innerHTML = `
         <div class="chip-swatch" style="background:${tag.color};"></div>
-        <div class="chip-label">${escapeHtml(tag.name)}</div>
+        <div class="chip-label">${tagLabelHtml(tag)}</div>
         <div class="chip-sub">${owned ? "✅ Possédé" : "Donner"}</div>
       `;
       chip.onclick = async () => {
@@ -671,7 +685,7 @@ function buildOrganizerManagePanel(targetUid, targetProfile) {
           }
           await updateDoc(doc(db, "users", targetUid), patch);
           const snap = await getDoc(doc(db, "users", targetUid));
-          renderPlayerCard(targetUid, snap.data());
+          await renderPlayerCard(targetUid, snap.data());
           showToast(owned ? "Tag retiré." : "Tag attribué !");
         } catch (err) {
           showToast(friendlyError(err), true);
@@ -986,7 +1000,7 @@ function renderTagManageList() {
     chip.className = "chip" + (editingTagId === tag.id ? " active" : "");
     chip.innerHTML = `
       <div class="chip-swatch" style="background:${tag.color};"></div>
-      <div class="chip-label">${escapeHtml(tag.name)}</div>
+      <div class="chip-label">${tagLabelHtml(tag)}</div>
       <div class="chip-sub">${tag.defaultOwned ? "Par défaut · " : ""}Modifier</div>
     `;
     chip.onclick = () => startEditTag(tag);
@@ -1019,6 +1033,7 @@ function startEditTag(tag) {
   editingTagId = tag.id;
   $("#admin-tag-name").value = tag.name;
   $("#admin-tag-color").value = tag.color;
+  $("#admin-tag-emoji").value = tag.emoji || "";
   $("#admin-tag-default").checked = !!tag.defaultOwned;
   $("#admin-tag-submit").textContent = "Enregistrer les modifications";
   $("#admin-tag-cancel").style.display = "";
@@ -1029,6 +1044,7 @@ function cancelEditTag() {
   editingTagId = null;
   $("#form-admin-tag")?.reset();
   $("#admin-tag-color").value = "#8b5cf6";
+  $("#admin-tag-emoji").value = "";
   $("#admin-tag-submit").textContent = "Créer le tag";
   $("#admin-tag-cancel").style.display = "none";
   renderTagManageList();
@@ -1038,6 +1054,7 @@ async function handleAdminTagSubmit(e) {
   e.preventDefault();
   const name = $("#admin-tag-name").value.trim();
   const color = $("#admin-tag-color").value;
+  const emoji = $("#admin-tag-emoji").value.trim();
   const defaultOwned = $("#admin-tag-default").checked;
   if (!name) {
     showToast("Donne un nom au tag.", true);
@@ -1045,10 +1062,10 @@ async function handleAdminTagSubmit(e) {
   }
   try {
     if (editingTagId) {
-      await updateTag(editingTagId, { name, color, defaultOwned });
+      await updateTag(editingTagId, { name, color, emoji: emoji || null, defaultOwned });
       showToast("Tag modifié !");
     } else {
-      await createTag({ name, color, defaultOwned });
+      await createTag({ name, color, emoji, defaultOwned });
       showToast("Tag créé !");
     }
     cancelEditTag();

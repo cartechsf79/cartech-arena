@@ -1,21 +1,31 @@
-# Car'Tech Arena — v8.1
+# Car'Tech Arena — v8.2
 
-Cette version ajoute, directement dans le **Duel du jour**, un **raccourci**
-vers "Saison actuelle", la possibilité de définir une **condition pour
-gagner** (score à atteindre, ou points de vie de départ) pour chaque jeu —
-y compris les jeux de base (Pokémon, Lorcana, One Piece) — et une nouvelle
-statistique **"Points cumulés"** dans "Saison actuelle", qui sert
-uniquement à départager deux joueurs à égalité de points. Voir "Nouveau
-dans cette version — condition de victoire par jeu et points cumulés" plus
-bas pour le détail complet.
+Cette version ajoute la possibilité de mettre un **emoji sur un tag** de
+profil, et un vrai **indicatif de joueur** sur les fiches profil (écran
+d'accueil, "Voir le profil", recherche organisateur) : des **points,
+victoires et défaites calculés à vie** (depuis la création du compte),
+affichés **avec** les points de la **saison en cours**, pour avoir une
+vision complète sans changer d'écran. Voir "Nouveau dans cette version —
+emoji sur les tags et indicatif de joueur à vie" plus bas pour le détail
+complet.
 
 **Pas de republication des règles Firestore nécessaire pour cette
-version** — les nouveautés utilisent le même système d'autorisations
-(organisateur uniquement) que le reste des catalogues, déjà en place
-depuis la v8. Republie quand même les fichiers (voir "Mise à jour"
+version** — le nouveau champ "emoji" sur un tag n'est pas davantage
+validé par les règles que les autres champs de ce catalogue (déjà
+organisateur-only). Republie quand même les fichiers (voir "Mise à jour"
 ci-dessous).
 
 ---
+
+## Historique — v8.1
+
+Cette version ajoutait, directement dans le **Duel du jour**, un
+**raccourci** vers "Saison actuelle", la possibilité de définir une
+**condition pour gagner** (score à atteindre, ou points de vie de départ)
+pour chaque jeu — y compris les jeux de base (Pokémon, Lorcana, One
+Piece) — et une nouvelle statistique **"Points cumulés"** dans "Saison
+actuelle", qui sert uniquement à départager deux joueurs à égalité de
+points.
 
 ## Historique — v8
 
@@ -530,6 +540,60 @@ condition de victoire configurée** ne contribue à aucun point cumulé (ni
 pour l'un ni pour l'autre joueur), et une performance qui dépasserait
 100% (ex. un score supérieur à la condition) est plafonnée à 100 pour ce
 match, pour ne pas avantager artificiellement un score disproportionné.
+
+## Nouveau dans cette version — emoji sur les tags et indicatif de joueur à vie
+
+### Emoji sur un tag
+
+Dans **Espace organisateur > Tags**, un nouveau champ facultatif "Emoji"
+permet d'ajouter un emoji (ex. 🏆, 🎖️, 🔥) devant le nom d'un tag. Il
+apparaît partout où le tag est affiché : la grille de personnalisation
+d'un joueur, la liste de gestion organisateur, les pastilles sur une
+fiche profil ("Voir le profil", recherche organisateur). Un tag déjà créé
+peut recevoir un emoji après coup en le modifiant (bouton "Modifier").
+Laisser le champ vide garde le comportement d'avant (juste le nom).
+
+### Indicatif de joueur : points/victoires/défaites à vie
+
+Sur l'écran d'accueil, ta propre fiche affiche maintenant 4 statistiques
+au lieu de 3 : **Points (total)**, **Victoires**, **Défaites**, et
+**Saison actuelle**. Elles apparaissent aussi sur la fiche de n'importe
+quel joueur (popup "Voir le profil", recherche organisateur), pas
+seulement la tienne — c'est pensé comme un indicatif global d'activité
+et de niveau, comme tu l'as demandé.
+
+Le calcul, précisément :
+
+- **Points (total)** = la somme des points gagnés sur **toutes les
+  saisons**, passées et actuelle, depuis la création du compte — avec
+  exactement les mêmes règles qu'à l'intérieur de l'écran "Saison
+  actuelle" (victoire = 3 pts, défaite = 1 pt, plafonné à 15 pts par
+  journée). Un duel joué à un moment où **aucune saison n'était en
+  cours** ne rapporte donc aucun point ici non plus — les points restent
+  toujours liés à une saison, seulement additionnés sur toute la
+  carrière du compte au lieu de la seule saison actuelle.
+- **Victoires / Défaites** = **tous** les duels du jour terminés depuis
+  la création du compte, qu'une saison ait été en cours ou non à ce
+  moment-là. Volontairement plus large que les points : ça donne une
+  vraie idée de l'activité du joueur même sur les périodes sans saison
+  programmée.
+- **Saison actuelle** = juste le sous-total de points de la saison
+  actuellement active (si il y en a une) — un raccourci pour ne pas
+  avoir à ouvrir l'écran "Saison actuelle" pour ce seul chiffre. Affiche
+  un tiret (—) s'il n'y a pas de saison en cours.
+
+**Point d'attention sur le calcul "Points (total)"** : comme il se base
+uniquement sur la DATE calendaire de chaque duel (pas sur le fait qu'une
+saison existait déjà au moment précis où le duel a été joué), un duel
+joué le jour même où une saison démarre (avant ou après sa création dans
+l'après-midi, par exemple) compte pour cette saison — c'est cohérent
+avec le fonctionnement déjà en place pour "Saison actuelle" (pas un
+comportement nouveau introduit ici).
+
+Comme pour le reste de l'appli : rien n'est stocké, tout est recalculé en
+direct à partir de l'historique des duels — les anciens champs
+`points`/`victoires`/`défaites` du compte (toujours à 0, jamais mis à
+jour) ne sont plus utilisés pour l'affichage.
 
 ## Ce qui est ajouté depuis la v5 — personnalisation des profils
 

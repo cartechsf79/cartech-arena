@@ -21,7 +21,7 @@ import { auth, db, ORGANIZER_EMAIL } from "./firebase-init.js";
 import { DEFAULT_OWNED_THEMES } from "./catalog.js";
 import { startLiveCatalogs, stopLiveCatalogs, findAnyDecoration, findAnyTag, applyThemeLive, contrastTextColor } from "./live-catalog.js";
 import { startHomePlayersListener, stopHomePlayersListener } from "./home-players.js";
-import { startSeasonBannerListener, stopSeasonBannerListener } from "./season.js";
+import { startSeasonBannerListener, stopSeasonBannerListener, startCareerStatsListener, stopCareerStatsListener, fetchCareerStats } from "./season.js";
 
 export const $ = (sel) => document.querySelector(sel);
 
@@ -253,9 +253,11 @@ export function renderProfile(profile) {
   badge.classList.toggle("badge-organizer", isOrganizer);
   badge.classList.toggle("badge-player", !isOrganizer);
 
-  $("#stat-points").textContent = profile.points ?? 0;
-  $("#stat-wins").textContent = profile.wins ?? 0;
-  $("#stat-losses").textContent = profile.losses ?? 0;
+  // Points/victoires/défaites (à vie) + points de la saison en cours ne
+  // viennent PAS de profile.points/wins/losses (des champs figés à 0 depuis
+  // la création du compte, jamais mis à jour — voir app.js plus haut) mais
+  // sont recalculés en direct depuis l'historique des duels par
+  // startCareerStatsListener() (season.js), déjà démarré à la connexion.
 
   document.querySelectorAll(".organizer-only").forEach((el) => {
     el.style.display = isOrganizer ? "" : "none";
@@ -303,18 +305,18 @@ export async function openPlayerProfileModal(targetUid) {
   body.innerHTML = `<p class="settings-note">Chargement…</p>`;
   overlay.classList.add("show");
   try {
-    const snap = await getDoc(doc(db, "users", targetUid));
+    const [snap, career] = await Promise.all([getDoc(doc(db, "users", targetUid)), fetchCareerStats(targetUid)]);
     if (!snap.exists()) {
       body.innerHTML = `<p class="settings-note">Profil introuvable (peut-être supprimé).</p>`;
       return;
     }
-    renderPlayerProfileModalContent(targetUid, snap.data());
+    renderPlayerProfileModalContent(targetUid, snap.data(), career);
   } catch (err) {
     body.innerHTML = `<p class="dd-error">${friendlyError(err)}</p>`;
   }
 }
 
-function renderPlayerProfileModalContent(targetUid, profile) {
+function renderPlayerProfileModalContent(targetUid, profile, career) {
   const body = $("#player-profile-modal-body");
   if (!body) return;
   const isOrg = profile.role === "organisateur";
@@ -323,11 +325,15 @@ function renderPlayerProfileModalContent(targetUid, profile) {
     ? activeTags
         .map(
           (t) =>
-            `<span class="tag-pill" style="background:${t.color};color:${contrastTextColor(t.color)};">${escapeHtmlLocal(t.name)}</span>`
+            `<span class="tag-pill" style="background:${t.color};color:${contrastTextColor(t.color)};">${t.emoji ? escapeHtmlLocal(t.emoji) + " " : ""}${escapeHtmlLocal(t.name)}</span>`
         )
         .join(" ")
     : `<span class="settings-note">Aucun tag affiché.</span>`;
   const canManage = getCurrentProfile()?.role === "organisateur" && targetUid !== getCurrentUid();
+  const seasonLine =
+    career.currentSeasonNumber != null
+      ? `${career.currentSeasonPoints} pts — Saison ${career.currentSeasonNumber} en cours`
+      : "Aucune saison en cours";
 
   body.innerHTML = `
     <div class="player-card" style="margin-top:0;">
@@ -335,7 +341,8 @@ function renderPlayerProfileModalContent(targetUid, profile) {
       <div class="player-card-info">
         <div style="font-weight:800;">${escapeHtmlLocal(profile.pseudo)}</div>
         <span class="badge ${isOrg ? "badge-organizer" : "badge-player"}">${isOrg ? "🛡️ Organisateur" : "🎮 Joueur"}</span>
-        <div class="settings-note">${profile.points ?? 0} pts · ${profile.wins ?? 0}V / ${profile.losses ?? 0}D</div>
+        <div class="settings-note">${career.lifetimePoints} pts (total) · ${career.lifetimeWins}V / ${career.lifetimeLosses}D (tous matchs)</div>
+        <div class="settings-note">${seasonLine}</div>
       </div>
     </div>
     <div class="player-tags">${tagsHtml}</div>
@@ -377,6 +384,7 @@ onAuthStateChanged(auth, async (user) => {
     stopLiveCatalogs();
     stopHomePlayersListener();
     stopSeasonBannerListener();
+    stopCareerStatsListener();
     broadcastProfile();
     showAuthScreen();
     return;
@@ -397,6 +405,10 @@ onAuthStateChanged(auth, async (user) => {
     // liste des saisons), démarré dès la connexion pour être toujours à
     // jour même sans ouvrir l'écran Saison.
     startSeasonBannerListener();
+    // Stats "carrière" (points/victoires/défaites à vie + saison en cours)
+    // affichées sur ma propre fiche de l'écran d'accueil — démarré dès la
+    // connexion pour la même raison que le bandeau ci-dessus.
+    startCareerStatsListener();
     const profile = await ensureUserProfile(user);
     renderProfile(profile);
     showAppScreen();
