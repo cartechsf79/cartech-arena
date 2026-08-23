@@ -347,6 +347,16 @@ export function showSettingsScreen() {
   $("#view-settings").classList.add("active");
 }
 
+// Écran séparé, réservé à l'organisateur : catalogues (décorations, thèmes,
+// tags, jeux). Le bouton qui y mène n'est visible que pour l'organisateur
+// (classe "organizer-only"), mais on revérifie quand même le rôle ici par
+// sécurité, au cas où l'écran serait ouvert autrement.
+export function showOrganizerCatalogScreen() {
+  if (getCurrentProfile()?.role !== "organisateur") return;
+  hideAllViews();
+  $("#view-organizer-catalog").classList.add("active");
+}
+
 // ---------------------------------------------------------------------------
 // Écoute de l'état de connexion (source de vérité)
 // ---------------------------------------------------------------------------
@@ -403,6 +413,8 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#btn-logout").addEventListener("click", handleLogout);
   $("#btn-open-settings").addEventListener("click", showSettingsScreen);
   $("#btn-close-settings").addEventListener("click", showAppScreen);
+  $("#btn-open-organizer-catalog")?.addEventListener("click", showOrganizerCatalogScreen);
+  $("#btn-close-organizer-catalog")?.addEventListener("click", showAppScreen);
 
   document.querySelectorAll(".auth-tab").forEach((el) => {
     el.addEventListener("click", () => switchAuthTab(el.dataset.tab));

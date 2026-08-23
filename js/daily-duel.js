@@ -16,7 +16,8 @@ import {
 
 import { db } from "./firebase-init.js";
 import { $, getCurrentProfile, getCurrentUid, showToast, friendlyError, renderAvatar, hideAllViews, openPlayerProfileModal } from "./app.js";
-import { GAMES, FORMATS, findFormat } from "./catalog.js";
+import { FORMATS, findFormat } from "./catalog.js";
+import { getAllGames } from "./live-catalog.js";
 
 // Toute action Firestore peut échouer (règles de sécurité, réseau...) — on
 // affiche toujours une erreur lisible plutôt que de laisser planter en
@@ -458,7 +459,7 @@ function renderAvailableList() {
 }
 
 function renderProposeForm(target) {
-  const gameOptions = GAMES.map((g) => `<option value="${g}">${g}</option>`).join("");
+  const gameOptions = getAllGames().map((g) => `<option value="${g}">${g}</option>`).join("");
   const formatOptions = FORMATS.map((f) => `<option value="${f.id}">${f.label}</option>`).join("");
   return `
     <div class="dd-propose-form">

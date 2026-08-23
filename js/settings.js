@@ -46,6 +46,8 @@ import {
   updateTheme,
   createTag,
   updateTag,
+  getAllGames,
+  createGame,
 } from "./live-catalog.js";
 
 const MAX_PHOTO_BYTES = 700_000; // marge de sécurité sous la limite de 1 Mo par document Firestore
@@ -87,7 +89,6 @@ function populateSettingsScreen() {
   renderDecorationsGrid(profile);
   renderThemesGrid(profile);
   renderTagsGrid(profile);
-  renderOrganizerCatalogPanel();
 
   $("#search-player-result").innerHTML = "";
   $("#search-player-input").value = "";
@@ -552,9 +553,18 @@ function buildOrganizerManagePanel(targetUid, targetProfile) {
     `;
     chip.onclick = async () => {
       try {
-        await updateDoc(doc(db, "users", targetUid), {
+        const patch = {
           "decorations.owned": owned ? arrayRemove(deco.id) : arrayUnion(deco.id),
-        });
+        };
+        // Si on retire une décoration actuellement affichée par le joueur,
+        // on désactive aussi tout de suite plutôt que de laisser "active"
+        // pointer vers une décoration qu'il ne possède plus — sinon son
+        // document devient invalide et il ne peut plus rien modifier chez
+        // lui tant qu'il n'a pas choisi une autre décoration.
+        if (owned && targetProfile.decorations?.active === deco.id) {
+          patch["decorations.active"] = null;
+        }
+        await updateDoc(doc(db, "users", targetUid), patch);
         const snap = await getDoc(doc(db, "users", targetUid));
         renderPlayerCard(targetUid, snap.data());
         showToast(owned ? "Décoration retirée." : "Décoration attribuée !");
@@ -584,9 +594,17 @@ function buildOrganizerManagePanel(targetUid, targetProfile) {
     `;
     chip.onclick = async () => {
       try {
-        await updateDoc(doc(db, "users", targetUid), {
+        const patch = {
           "theme.owned": owned ? arrayRemove(theme.id) : arrayUnion(theme.id),
-        });
+        };
+        // Même logique que pour les décorations : si on retire le thème
+        // actuellement choisi par le joueur, on le repasse sur "Classique"
+        // (toujours débloqué pour tout le monde) plutôt que de laisser
+        // "active" pointer vers un thème qu'il ne possède plus.
+        if (owned && targetProfile.theme?.active === theme.id) {
+          patch["theme.active"] = "classique";
+        }
+        await updateDoc(doc(db, "users", targetUid), patch);
         const snap = await getDoc(doc(db, "users", targetUid));
         renderPlayerCard(targetUid, snap.data());
         showToast(owned ? "Thème retiré." : "Thème attribué !");
@@ -623,9 +641,16 @@ function buildOrganizerManagePanel(targetUid, targetProfile) {
       `;
       chip.onclick = async () => {
         try {
-          await updateDoc(doc(db, "users", targetUid), {
+          const patch = {
             "tags.owned": owned ? arrayRemove(tag.id) : arrayUnion(tag.id),
-          });
+          };
+          // Même logique que pour les décorations/thèmes : si on retire un
+          // tag actuellement affiché par le joueur, on le retire aussi de
+          // "active" dans la même écriture.
+          if (owned && (targetProfile.tags?.active || []).includes(tag.id)) {
+            patch["tags.active"] = arrayRemove(tag.id);
+          }
+          await updateDoc(doc(db, "users", targetUid), patch);
           const snap = await getDoc(doc(db, "users", targetUid));
           renderPlayerCard(targetUid, snap.data());
           showToast(owned ? "Tag retiré." : "Tag attribué !");
@@ -660,6 +685,7 @@ function renderOrganizerCatalogPanel() {
   renderDecoManageList();
   renderThemeManageList();
   renderTagManageList();
+  renderGameManageList();
 }
 
 function renderDecoManageList() {
@@ -882,6 +908,40 @@ async function handleAdminTagSubmit(e) {
 }
 
 // ---------------------------------------------------------------------------
+// Jeux (TCG) — pas de modification une fois créés (juste ajout), comme les
+// autres catalogues : les jeux "d'origine" (catalog.js) sont affichés pour
+// information mais ne sont pas des chips cliquables (rien à modifier dessus).
+// ---------------------------------------------------------------------------
+function renderGameManageList() {
+  const list = $("#admin-game-list");
+  if (!list) return;
+  list.innerHTML = getAllGames()
+    .map((name) => `<div class="chip"><div class="chip-label">${escapeHtml(name)}</div></div>`)
+    .join("");
+}
+
+async function handleAdminGameSubmit(e) {
+  e.preventDefault();
+  const name = $("#admin-game-name").value.trim();
+  if (!name) {
+    showToast("Donne un nom au jeu.", true);
+    return;
+  }
+  const already = getAllGames().some((g) => g.toLowerCase() === name.toLowerCase());
+  if (already) {
+    showToast("Ce jeu existe déjà.", true);
+    return;
+  }
+  try {
+    await createGame(name);
+    $("#form-admin-game")?.reset();
+    showToast("Jeu ajouté !");
+  } catch (err) {
+    showToast(friendlyError(err), true);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Suppression de compte
 // ---------------------------------------------------------------------------
 let deleteCode = null;
@@ -952,6 +1012,7 @@ async function handleConfirmDeleteGoogle() {
 // ---------------------------------------------------------------------------
 document.addEventListener("DOMContentLoaded", () => {
   $("#btn-open-settings").addEventListener("click", populateSettingsScreen);
+  $("#btn-open-organizer-catalog")?.addEventListener("click", renderOrganizerCatalogPanel);
 
   $("#form-change-pseudo").addEventListener("submit", handleSavePseudo);
   $("#form-change-password").addEventListener("submit", handleChangePassword);
@@ -972,19 +1033,22 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#admin-theme-cancel")?.addEventListener("click", cancelEditTheme);
   $("#form-admin-tag")?.addEventListener("submit", handleAdminTagSubmit);
   $("#admin-tag-cancel")?.addEventListener("click", cancelEditTag);
+  $("#form-admin-game")?.addEventListener("submit", handleAdminGameSubmit);
 
   // Les catalogues (décorations/thèmes/tags) peuvent changer pendant que
   // l'écran Paramètres est ouvert (une création vient de l'organisateur
   // lui-même, ou d'un autre appareil) : on rafraîchit les grilles concernées
   // à chaque mise à jour, uniquement si cet écran est bien affiché.
   document.addEventListener("cartech:catalogs", () => {
-    if (!$("#view-settings")?.classList.contains("active")) return;
     const profile = getCurrentProfile();
-    if (!profile) return;
-    renderDecorationsGrid(profile);
-    renderThemesGrid(profile);
-    renderTagsGrid(profile);
-    renderOrganizerCatalogPanel();
+    if (profile && $("#view-settings")?.classList.contains("active")) {
+      renderDecorationsGrid(profile);
+      renderThemesGrid(profile);
+      renderTagsGrid(profile);
+    }
+    if ($("#view-organizer-catalog")?.classList.contains("active")) {
+      renderOrganizerCatalogPanel();
+    }
   });
 
   // Ouvert depuis la fenêtre "Voir le profil" quand l'organisateur clique

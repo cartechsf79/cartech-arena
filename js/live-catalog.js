@@ -19,15 +19,17 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 import { db } from "./firebase-init.js";
-import { DECORATIONS, THEMES, findTheme } from "./catalog.js";
+import { DECORATIONS, THEMES, findTheme, GAMES } from "./catalog.js";
 
 const decorationsCol = collection(db, "decorations");
 const themesCol = collection(db, "themes");
 const tagsCol = collection(db, "tags");
+const gamesCol = collection(db, "games");
 
 let liveDecorations = [];
 let liveThemes = [];
 let liveTags = [];
+let liveGames = [];
 let started = false;
 let listeners = [];
 
@@ -64,6 +66,13 @@ export function startLiveCatalogs(onUpdate) {
       document.dispatchEvent(new CustomEvent("cartech:catalogs"));
     })
   );
+  listeners.push(
+    onSnapshot(gamesCol, (snap) => {
+      liveGames = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      onUpdate?.();
+      document.dispatchEvent(new CustomEvent("cartech:catalogs"));
+    })
+  );
 }
 
 export function stopLiveCatalogs() {
@@ -72,6 +81,7 @@ export function stopLiveCatalogs() {
   liveDecorations = [];
   liveThemes = [];
   liveTags = [];
+  liveGames = [];
   started = false;
 }
 
@@ -90,6 +100,12 @@ export function getAllThemes() {
 }
 export function getAllTags() {
   return liveTags.slice();
+}
+// Les jeux sont de simples chaînes (pas besoin d'id/couleur/image) : la
+// liste fusionne les jeux "de base" de catalog.js avec les noms ajoutés par
+// l'organisateur depuis l'appli, dans l'ordre d'ajout.
+export function getAllGames() {
+  return [...GAMES, ...liveGames.map((g) => g.name)];
 }
 
 export function findAnyDecoration(id) {
@@ -252,6 +268,13 @@ export async function createTag({ name, color, defaultOwned }) {
 }
 export async function updateTag(id, patch) {
   await updateDoc(doc(tagsCol, id), patch);
+}
+
+// Jeux (TCG) : pas de modification une fois créés (comme les autres
+// catalogues), juste ajout — un nom en double (même en base) est bloqué
+// côté appel pour éviter deux entrées identiques dans les menus déroulants.
+export async function createGame(name) {
+  await addDoc(gamesCol, { name: name.trim(), createdAt: serverTimestamp() });
 }
 
 // Couleur de texte lisible (noir ou blanc) selon la luminosité perçue de la

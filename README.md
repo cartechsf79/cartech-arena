@@ -1,11 +1,17 @@
-# Car'Tech Arena — Personnalisation des profils (v5)
+# Car'Tech Arena — v6
 
-Cette version ajoute la **personnalisation des profils** : décorations de
-photo (statiques ou animées), thèmes de couleurs, tags — tous créables et
-modifiables par toi directement depuis l'appli (plus besoin de me
-redemander à chaque fois) — un recadrage de photo digne d'une vraie appli
-(zoom + position), et une **liste des joueurs** sur l'écran d'accueil qui
-montre en direct qui est disponible en boutique, en duel, ou pas là.
+Cette version corrige un bug important (des décorations/thèmes attribués
+qui refusaient de s'activer sur certains comptes), sépare l'espace
+organisateur des Paramètres standards dans son propre écran, et permet
+d'ajouter un nouveau jeu (TCG) directement depuis l'appli, sans avoir à me
+redemander de modifier le code.
+
+Elle inclut toujours tout ce qui a été ajouté en v5 : décorations de photo
+(statiques ou animées), thèmes de couleurs, tags — tous créables et
+modifiables par toi directement depuis l'appli — un recadrage de photo
+digne d'une vraie appli (zoom + position), et une **liste des joueurs** sur
+l'écran d'accueil qui montre en direct qui est disponible en boutique, en
+duel, ou pas là.
 
 ## Comment ça marche
 
@@ -22,8 +28,8 @@ js/app.js               <- inscription / connexion / rôle
 js/settings.js          <- tout l'écran Paramètres
 js/daily-duel.js        <- le Duel du jour
 js/event.js             <- l'Événement
-js/live-catalog.js      <- décorations/thèmes/tags créés par toi (nouveau)
-js/home-players.js      <- liste des joueurs de l'écran d'accueil (nouveau)
+js/live-catalog.js      <- décorations/thèmes/tags/jeux créés par toi
+js/home-players.js      <- liste des joueurs de l'écran d'accueil
 firestore.rules         <- règles de sécurité à coller dans Firebase
 ```
 
@@ -34,21 +40,20 @@ sous forme d'image compressée (recadrée en 512×512 et convertie en JPEG
 léger). Ça reste largement dans le 1 Go gratuit de Firestore et ça évite
 d'avoir à activer un mode payant.
 
-## Mise à jour depuis la v4 — à faire une seule fois
+## Mise à jour depuis la v5 — à faire une seule fois
 
-1. **Republie les fichiers** : sur ton dépôt GitHub, remplace tous les
+1. **Republie les fichiers** : sur ton dépôt GitHub (le bon projet — celui
+   lié à ton domaine `car-tech-arena.vercel.app`), remplace tous les
    fichiers par ceux de ce dossier (glisse-dépose tout par-dessus, "Commit
-   changes" — GitHub écrase les fichiers existants et ajoute les nouveaux,
-   dont `js/live-catalog.js` et `js/home-players.js`). `js/firebase-config.js`
-   contient déjà tes vraies clés et ton email organisateur, pas besoin d'y
-   retoucher.
+   changes"). `js/firebase-config.js` contient déjà tes vraies clés et ton
+   email organisateur, pas besoin d'y retoucher.
 
-2. **Republie les règles Firestore** : Firebase Console > Firestore Database
-   > onglet "Règles" > remplace tout le contenu par celui de
-   `firestore.rules` (celui-ci ajoute les règles pour les décorations,
-   thèmes et tags personnalisés, en plus de tout ce qui existait déjà) >
-   "Publier". **Cette étape est indispensable** : sans elle, la création de
-   décorations/thèmes/tags et l'affichage des tags ne fonctionneront pas
+2. **Republie les règles Firestore — cette étape est indispensable pour le
+   correctif du bug de cette version** : Firebase Console > Firestore
+   Database > onglet "Règles" > remplace tout le contenu par celui de
+   `firestore.rules` > "Publier". Sans cette republication, le bug
+   "décoration/thème qui refuse de s'activer" (voir plus bas) n'est **pas**
+   corrigé, et le nouveau catalogue de jeux ne fonctionnera pas non plus
    (accès refusé par Firebase).
 
 3. Vercel redéploiera automatiquement dès que GitHub reçoit les nouveaux
@@ -56,7 +61,36 @@ d'avoir à activer un mode payant.
 
 C'est tout — pas de nouveau projet Firebase à créer, pas de nouvelle
 autorisation à donner. Les comptes déjà créés continueront de fonctionner
-normalement.
+normalement, et le compte qui avait le souci de décoration/thème bloqué se
+débloque automatiquement dès qu'il clique sur une décoration ou un thème
+(pas besoin de le recréer).
+
+## Corrigé dans cette version — décoration/thème qui refusait de s'activer
+
+**Le souci** : sur un compte auquel tu avais attribué une décoration ou un
+thème, cliquer dessus pour l'activer donnait "Action refusée (droits
+insuffisants)" — pareil pour les thèmes.
+
+**La cause** : dans les règles de sécurité, la vérification "le thème/la
+décoration choisi est bien parmi ceux que je possède" s'appliquait à
+**tout le document du compte**, à chaque modification — même une
+modification qui n'avait rien à voir. Si jamais une décoration ou un thème
+actif chez un joueur avait été retiré entre-temps (par exemple si tu avais
+cliqué deux fois par erreur sur "Donner" pour le retirer), son compte
+restait bloqué **pour toujours** : plus aucune modification n'était
+possible dessus, ni les décorations, ni les thèmes, ni rien d'autre, tant
+que la valeur incohérente restait en place.
+
+**Le correctif** : les règles laissent maintenant toujours passer une
+modification qui ne touche pas au champ concerné, même si ce champ était
+déjà dans un état incohérent — seule une nouvelle valeur invalide reste
+refusée. En clair : un compte bloqué se débloque tout seul dès la première
+interaction (clique sur une décoration, un thème, n'importe quoi), sans
+rien à faire de ton côté. J'en ai profité pour renforcer aussi le bouton
+"Donner/Retirer" côté organisateur : si tu retires une décoration/un
+thème/un tag qui était actuellement affiché par un joueur, ça le désactive
+automatiquement au même moment, pour ne plus jamais recréer ce genre de
+blocage.
 
 ## Ce qui est ajouté dans cette version — le Duel du jour
 
@@ -77,7 +111,8 @@ tout le monde.
 - Il voit la liste des autres joueurs **disponibles** en direct (pas besoin
   de rafraîchir la page).
 - Il clique sur "Proposer duel" pour un adversaire : choix du jeu (Pokémon
-  TCG / Lorcana / One Piece Card Game) et du format (BO1/BO3/BO5).
+  TCG / Lorcana / One Piece Card Game, ou tout jeu que tu as ajouté depuis
+  l'Espace organisateur) et du format (BO1/BO3/BO5).
 - L'adversaire reçoit la proposition **instantanément** et peut
   accepter/refuser.
 - Une fois le duel accepté, chacun saisit **son propre score et le score de
@@ -148,12 +183,32 @@ version-là :
   terminer l'événement normalement en laissant ce joueur de côté pour les
   prochaines manches.
 
-## Ce qui est ajouté dans cette version — personnalisation des profils
+## Nouveau dans cette version — Espace organisateur séparé
+
+L'écran **🛡️ Espace organisateur** (décorations, thèmes, tags, jeux) n'est
+plus une section au milieu des Paramètres standards — c'est maintenant un
+écran à part entière, accessible depuis l'écran d'accueil via le bouton
+**🛡️ Décorations, thèmes, tags & jeux** (visible seulement pour ton
+compte, juste au-dessus de "Se déconnecter"). Les Paramètres restent
+l'écran où tout le monde (toi y compris) gère son propre pseudo, mot de
+passe, photo, décoration/thème/tag actifs, et cherche le profil d'un
+joueur.
+
+## Nouveau dans cette version — ajout d'un jeu (TCG) depuis l'appli
+
+Dans l'écran **🛡️ Espace organisateur**, une nouvelle section **Jeux
+(TCG)** te permet d'ajouter un jeu (nom seulement, ex : "Digimon Card
+Game") sans avoir à me redemander de modifier le code. Le nouveau jeu
+apparaît immédiatement dans les choix de jeu du Duel du jour et de
+l'Événement, pour tout le monde. Les 3 jeux d'origine (Pokémon TCG,
+Lorcana, One Piece Card Game) restent toujours disponibles et ne peuvent
+pas être supprimés depuis l'appli.
+
+## Ce qui est ajouté depuis la v5 — personnalisation des profils
 
 ### Décorations, thèmes et tags créés par toi
 
-Nouvelle section **🛡️ Espace organisateur — Catalogues** tout en bas de
-l'écran Paramètres (visible seulement pour ton compte) :
+Dans l'écran **🛡️ Espace organisateur** (voir ci-dessus) :
 - **Décorations de photo de profil** : donne un nom, choisis "Statique
   (image)" ou "Animée (gif)", importe le fichier. Une décoration animée
   s'affiche en cadre par-dessus la photo du joueur, gif compris. Clique sur
@@ -218,9 +273,9 @@ décorations/thèmes/tags).
 - Le classement général basé sur l'historique des duels et des événements.
 - Un vrai système de départage en cas d'égalité en fin d'événement.
 - La gestion propre d'un abandon en cours d'événement.
-- La suppression d'une décoration/d'un thème/d'un tag une fois créé (pour
-  l'instant, seule la création et la modification sont possibles — évite
-  de laisser un joueur avec une référence vers quelque chose qui n'existe
-  plus).
+- La suppression d'une décoration/d'un thème/d'un tag/d'un jeu une fois
+  créé (pour l'instant, seule la création — et la modification pour les
+  décorations/thèmes/tags — est possible — évite de laisser un joueur ou un
+  match avec une référence vers quelque chose qui n'existe plus).
 - La mise à jour en direct du profil d'un joueur déjà connecté quand
   l'organisateur lui attribue quelque chose (voir la limite ci-dessus).

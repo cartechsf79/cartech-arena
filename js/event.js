@@ -25,7 +25,8 @@ import {
   renderAvatar,
   hideAllViews,
 } from "./app.js";
-import { GAMES, FORMATS, findFormat } from "./catalog.js";
+import { FORMATS, findFormat } from "./catalog.js";
+import { getAllGames } from "./live-catalog.js";
 
 async function withErrorToast(fn) {
   try {
@@ -429,7 +430,7 @@ function renderEventOrganizerPanel() {
   let html = `<h3>🏆 Organisateur — Événement</h3>`;
 
   if (!activeEvent || activeEvent.status === "termine") {
-    const gameOptions = GAMES.map((g) => `<option value="${g}">${g}</option>`).join("");
+    const gameOptions = getAllGames().map((g) => `<option value="${g}">${g}</option>`).join("");
     const formatOptions = FORMATS.map((f) => `<option value="${f.id}">${f.label}</option>`).join("");
     html += `
       <label for="ev-create-game">Jeu</label>

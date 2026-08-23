@@ -104,8 +104,8 @@
         <!-- Visible uniquement pour le compte organisateur -->
         <div class="organizer-panel organizer-only" style="display:none;">
           <b>🛡️ Espace organisateur</b><br>
-          Le « Duel du jour » et l'« Événement » se gèrent depuis les boutons ci-dessus. Les
-          décorations, thèmes et tags se créent dans Paramètres.
+          Le « Duel du jour » et l'« Événement » se gèrent depuis les boutons ci-dessus.
+          <button class="btn btn-ghost" id="btn-open-organizer-catalog" type="button" style="margin-top:10px;">🛡️ Décorations, thèmes, tags &amp; jeux</button>
         </div>
 
         <button class="btn btn-ghost" id="btn-logout" type="button">Se déconnecter</button>
@@ -220,10 +220,29 @@
         <div id="search-player-result"></div>
       </div>
 
-      <!-- Espace organisateur : catalogues -->
-      <div class="card settings-section organizer-only" id="section-organizer-catalog" style="display:none;">
-        <h3>🛡️ Espace organisateur — Catalogues</h3>
-        <p class="settings-note">Crée et modifie les décorations, thèmes et tags. Pour les attribuer à un joueur, utilise « Voir le profil d'un joueur » ci-dessus.</p>
+      <!-- Zone de danger -->
+      <div class="card settings-section danger-zone">
+        <h3>Zone de danger</h3>
+        <p class="settings-note">Supprimer ton compte est définitif : profil, points et historique seront perdus.</p>
+        <button class="btn btn-danger" type="button" id="btn-delete-account">Supprimer mon compte</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- ÉCRAN : Espace organisateur — Catalogues (décorations, thèmes, -->
+  <!-- tags, jeux) — séparé des Paramètres standards, réservé à       -->
+  <!-- l'organisateur (bouton d'accès visible uniquement pour lui).   -->
+  <!-- ============================================================ -->
+  <div class="view" id="view-organizer-catalog">
+    <div class="app-wrap settings-wrap">
+      <div class="settings-header">
+        <button class="icon-btn" id="btn-close-organizer-catalog" type="button" title="Retour">←</button>
+        <h1 class="settings-title">🛡️ Espace organisateur</h1>
+      </div>
+
+      <div class="card settings-section" id="section-organizer-catalog">
+        <p class="settings-note">Crée et modifie les décorations, thèmes, tags et jeux. Pour attribuer une décoration/un thème/un tag à un joueur, utilise Paramètres &gt; « Voir le profil d'un joueur ».</p>
 
         <div class="manage-grid-label">Décorations de photo de profil</div>
         <div class="chip-grid" id="admin-deco-list"></div>
@@ -271,13 +290,15 @@
           <button class="btn btn-primary" type="submit" id="admin-tag-submit">Créer le tag</button>
           <button class="btn btn-ghost" type="button" id="admin-tag-cancel" style="display:none;">Annuler la modification</button>
         </form>
-      </div>
 
-      <!-- Zone de danger -->
-      <div class="card settings-section danger-zone">
-        <h3>Zone de danger</h3>
-        <p class="settings-note">Supprimer ton compte est définitif : profil, points et historique seront perdus.</p>
-        <button class="btn btn-danger" type="button" id="btn-delete-account">Supprimer mon compte</button>
+        <div class="manage-grid-label">Jeux (TCG)</div>
+        <p class="settings-note">Les jeux ci-dessous apparaissent dans les choix du Duel du jour et de l'Événement.</p>
+        <div class="chip-grid" id="admin-game-list"></div>
+        <form id="form-admin-game">
+          <label for="admin-game-name">Nom du jeu</label>
+          <input type="text" id="admin-game-name" maxlength="40" required placeholder="Ex : Digimon Card Game">
+          <button class="btn btn-primary" type="submit" id="admin-game-submit">Ajouter le jeu</button>
+        </form>
       </div>
     </div>
   </div>
