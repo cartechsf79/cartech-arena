@@ -1,10 +1,17 @@
-# Car'Tech Arena — v6
+# Car'Tech Arena — v6.1
 
-Cette version corrige un bug important (des décorations/thèmes attribués
-qui refusaient de s'activer sur certains comptes), sépare l'espace
-organisateur des Paramètres standards dans son propre écran, et permet
-d'ajouter un nouveau jeu (TCG) directement depuis l'appli, sans avoir à me
-redemander de modifier le code.
+Cette version corrige **deux** bugs qui, ensemble, provoquaient le même
+symptôme sur certains comptes (décorations/thèmes/tags attribués qui
+refusaient de s'activer, "Action refusée (droits insuffisants)"), sépare
+l'espace organisateur des Paramètres standards dans son propre écran, et
+permet d'ajouter un nouveau jeu (TCG) directement depuis l'appli, sans
+avoir à me redemander de modifier le code.
+
+**Si tu as déjà installé la v6 et que le souci persiste malgré la
+republication des règles** : c'est normal, il y avait un deuxième bug plus
+profond (voir "Corrigé dans cette version — bug n°2" plus bas), corrigé
+seulement dans cette v6.1. Republie les fichiers et les règles une nouvelle
+fois avec ce dossier.
 
 Elle inclut toujours tout ce qui a été ajouté en v5 : décorations de photo
 (statiques ou animées), thèmes de couleurs, tags — tous créables et
@@ -40,7 +47,7 @@ sous forme d'image compressée (recadrée en 512×512 et convertie en JPEG
 léger). Ça reste largement dans le 1 Go gratuit de Firestore et ça évite
 d'avoir à activer un mode payant.
 
-## Mise à jour depuis la v5 — à faire une seule fois
+## Mise à jour depuis la v5 ou la v6 — à faire une seule fois
 
 1. **Republie les fichiers** : sur ton dépôt GitHub (le bon projet — celui
    lié à ton domaine `car-tech-arena.vercel.app`), remplace tous les
@@ -48,24 +55,27 @@ d'avoir à activer un mode payant.
    changes"). `js/firebase-config.js` contient déjà tes vraies clés et ton
    email organisateur, pas besoin d'y retoucher.
 
-2. **Republie les règles Firestore — cette étape est indispensable pour le
-   correctif du bug de cette version** : Firebase Console > Firestore
+2. **Republie les règles Firestore — cette étape est indispensable pour les
+   deux correctifs de cette version** : Firebase Console > Firestore
    Database > onglet "Règles" > remplace tout le contenu par celui de
-   `firestore.rules` > "Publier". Sans cette republication, le bug
-   "décoration/thème qui refuse de s'activer" (voir plus bas) n'est **pas**
-   corrigé, et le nouveau catalogue de jeux ne fonctionnera pas non plus
-   (accès refusé par Firebase).
+   `firestore.rules` > "Publier". Vérifie bien qu'il n'y a **pas de message
+   d'erreur en rouge** après avoir cliqué sur "Publier", et qu'un indicateur
+   du style "Dernière publication : à l'instant" apparaît en haut — sinon
+   les anciennes règles restent actives et rien ne change côté site, même
+   si le code (JS/HTML) est à jour. Sans cette republication, les
+   décorations/thèmes/tags et le nouveau catalogue de jeux ne fonctionneront
+   pas (accès refusé par Firebase).
 
 3. Vercel redéploiera automatiquement dès que GitHub reçoit les nouveaux
    fichiers.
 
 C'est tout — pas de nouveau projet Firebase à créer, pas de nouvelle
 autorisation à donner. Les comptes déjà créés continueront de fonctionner
-normalement, et le compte qui avait le souci de décoration/thème bloqué se
-débloque automatiquement dès qu'il clique sur une décoration ou un thème
-(pas besoin de le recréer).
+normalement, et un compte bloqué (comme celui que tu as testé) se débloque
+automatiquement à sa prochaine connexion (pas besoin de le recréer ni de
+toucher à ses données à la main dans Firebase).
 
-## Corrigé dans cette version — décoration/thème qui refusait de s'activer
+## Corrigé dans cette version — bug n°1 : décoration/thème qui refusait de s'activer
 
 **Le souci** : sur un compte auquel tu avais attribué une décoration ou un
 thème, cliquer dessus pour l'activer donnait "Action refusée (droits
@@ -91,6 +101,32 @@ rien à faire de ton côté. J'en ai profité pour renforcer aussi le bouton
 thème/un tag qui était actuellement affiché par un joueur, ça le désactive
 automatiquement au même moment, pour ne plus jamais recréer ce genre de
 blocage.
+
+## Corrigé dans cette version — bug n°2 : la vraie cause du compte "Stooff_"
+
+C'est ce deuxième bug, plus sournois, qui expliquait pourquoi le souci
+persistait même après avoir republié les règles de la v6.
+
+**La cause** : sur un compte créé avant l'ajout des Tags (ou plus
+généralement, un compte qui n'a jamais reçu de tag de ta part), la première
+fois que ce joueur active un tag "disponible pour tout le monde" tout seul
+(sans que tu aies eu besoin de le lui donner), l'appli enregistre son choix
+mais ne crée, par accident, qu'une moitié du champ "tags" du compte — la
+partie "tags affichés" existe, mais la partie "tags possédés" n'est jamais
+créée. Dans les règles de sécurité, vérifier cette partie manquante faisait
+planter la vérification tout entière — et exactement comme pour le bug n°1,
+ça bloquait alors TOUT le compte, y compris des actions qui n'ont rien à
+voir avec les tags (activer une décoration, changer de thème...). C'est
+exactement ce qui s'était passé sur le compte "Stooff_" que tu m'as montré :
+il n'avait pas de souci de décoration/thème retiré comme le bug n°1, il
+avait ce souci de tag à moitié enregistré.
+
+**Le correctif** : les règles de sécurité savent maintenant gérer
+proprement un champ "à moitié rempli" comme celui-ci sans planter, et
+l'appli répare automatiquement les comptes concernés à leur prochaine
+connexion (sans rien perdre : les tags déjà affichés par le joueur restent
+affichés). Les nouveaux comptes créés à partir de cette version ne peuvent
+plus se retrouver dans cet état.
 
 ## Ce qui est ajouté dans cette version — le Duel du jour
 

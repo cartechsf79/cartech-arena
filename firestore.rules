@@ -113,7 +113,7 @@ service cloud.firestore {
         && request.resource.data.decorations.owned.size() == 0
         && request.resource.data.decorations.active == null
         && (!('tags' in request.resource.data)
-            || (request.resource.data.tags.owned.size() == 0 && request.resource.data.tags.active.size() == 0))
+            || (request.resource.data.tags.get('owned', []).size() == 0 && request.resource.data.tags.get('active', []).size() == 0))
         && (
           (request.resource.data.role == 'organisateur'
             && request.auth.token.email.lower() == 'cartechsf79@gmail.com')
@@ -137,9 +137,21 @@ service cloud.firestore {
           && request.resource.data.points == resource.data.points
           && request.resource.data.wins == resource.data.wins
           && request.resource.data.losses == resource.data.losses
-          && (!('decorations' in resource.data) || request.resource.data.decorations.owned == resource.data.decorations.owned)
-          && (!('theme' in resource.data) || request.resource.data.theme.owned == resource.data.theme.owned)
-          && (!('tags' in resource.data) || request.resource.data.tags.owned == resource.data.tags.owned)
+          // Tout ce qui suit utilise .get('clé', valeurParDéfaut) plutôt que
+          // .clé directement : accéder à une clé absente d'une map avec la
+          // notation .clé fait ÉCHOUER l'évaluation de la règle avec une
+          // erreur (pas juste "null" comme en JavaScript) — et une erreur
+          // ici bloque TOUT le document, pas seulement le champ concerné.
+          // C'est arrivé en pratique : un joueur qui active un tag "par
+          // défaut" avant d'avoir jamais reçu de tag de l'organisateur se
+          // retrouve avec un champ "tags" qui contient "active" mais pas
+          // "owned" (jamais initialisé) — et sans ce laisser-passer, ce
+          // compte ne pouvait plus JAMAIS rien modifier, même sa photo ou
+          // son thème. Avec .get(), une clé manquante vaut simplement sa
+          // valeur par défaut, sans jamais faire planter la règle.
+          && (!('decorations' in resource.data) || request.resource.data.decorations.get('owned', []) == resource.data.decorations.get('owned', []))
+          && (!('theme' in resource.data) || request.resource.data.theme.get('owned', []) == resource.data.theme.get('owned', []))
+          && (!('tags' in resource.data) || request.resource.data.tags.get('owned', []) == resource.data.tags.get('owned', []))
           // Ces 3 invariants valident un NOUVEL "active" (il doit être dans
           // "owned"), mais laissent toujours passer une écriture qui ne
           // touche pas du tout à ce champ-là (comparaison à la valeur
@@ -149,14 +161,14 @@ service cloud.firestore {
           // remodifier son propre document (même un champ sans rapport),
           // car ces règles s'appliquent au document entier à chaque
           // écriture, pas seulement aux champs modifiés.
-          && (request.resource.data.decorations.active == null
-              || request.resource.data.decorations.active in request.resource.data.decorations.owned
-              || request.resource.data.decorations.active == resource.data.decorations.active)
-          && (request.resource.data.theme.active in request.resource.data.theme.owned
-              || request.resource.data.theme.active == resource.data.theme.active)
+          && (request.resource.data.decorations.get('active', null) == null
+              || request.resource.data.decorations.get('active', null) in request.resource.data.decorations.get('owned', [])
+              || request.resource.data.decorations.get('active', null) == resource.data.decorations.get('active', null))
+          && (request.resource.data.theme.get('active', 'classique') in request.resource.data.theme.get('owned', [])
+              || request.resource.data.theme.get('active', 'classique') == resource.data.theme.get('active', 'classique'))
           && (!('tags' in request.resource.data)
-              || tagsActiveValid(request.resource.data.tags.active, request.resource.data.tags.owned)
-              || request.resource.data.tags.active == resource.data.tags.active)
+              || tagsActiveValid(request.resource.data.tags.get('active', []), request.resource.data.tags.get('owned', []))
+              || request.resource.data.tags.get('active', []) == resource.data.tags.get('active', []))
         )
       );
 

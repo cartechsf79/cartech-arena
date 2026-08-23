@@ -100,6 +100,14 @@ async function ensureUserProfile(user, pseudoFromSignup) {
     const patch = {};
     if (!data.decorations) patch.decorations = { owned: [], active: null };
     if (!data.theme) patch.theme = { owned: DEFAULT_OWNED_THEMES, active: "classique" };
+    // Un compte dont "tags" existe déjà mais sans "owned" (ex. un joueur qui
+    // a activé un tag "par défaut" avant même que "tags" ait été créé sur
+    // son document) bloquait TOUTES ses modifications futures — voir
+    // firestore.rules. On répare ici en ajoutant "owned: []" tout en
+    // gardant ses tags déjà affichés ("active") intacts.
+    if (!data.tags || !Array.isArray(data.tags.owned)) {
+      patch.tags = { owned: [], active: Array.isArray(data.tags?.active) ? data.tags.active : [] };
+    }
     if (!("photoDataUrl" in data)) patch.photoDataUrl = null;
     if (!data.pseudoLower) patch.pseudoLower = (data.pseudo || "").toLowerCase();
     if (Object.keys(patch).length) {
@@ -123,6 +131,7 @@ async function ensureUserProfile(user, pseudoFromSignup) {
     photoDataUrl: null,
     decorations: { owned: [], active: null },
     theme: { owned: DEFAULT_OWNED_THEMES, active: "classique" },
+    tags: { owned: [], active: [] },
     createdAt: serverTimestamp(),
   };
 
