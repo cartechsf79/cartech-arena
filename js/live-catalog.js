@@ -12,6 +12,7 @@
 import {
   doc,
   addDoc,
+  setDoc,
   updateDoc,
   deleteDoc,
   collection,
@@ -118,8 +119,41 @@ export function getAllTags() {
 // Les jeux sont de simples chaînes (pas besoin d'id/couleur/image) : la
 // liste fusionne les jeux "de base" de catalog.js avec les noms ajoutés par
 // l'organisateur depuis l'appli, dans l'ordre d'ajout.
+// Un document de "games" peut désormais exister uniquement pour porter la
+// configuration de condition de victoire d'un jeu de base (voir
+// getGameWinCondition ci-dessous) — un tel document n'a pas de champ "name"
+// et ne doit donc jamais apparaître comme un jeu supplémentaire ici.
 export function getAllGames() {
-  return [...GAMES, ...liveGames.map((g) => g.name)];
+  return [...GAMES, ...liveGames.filter((g) => g.name).map((g) => g.name)];
+}
+
+// Condition de victoire configurée pour un jeu (de base ou personnalisé) —
+// stockée dans le document Firestore "games/{nomDuJeu}" (l'id du document
+// est le nom exact du jeu, ce qui permet aux jeux de base — jamais stockés
+// auparavant — d'avoir eux aussi un document, uniquement pour porter ce
+// champ). Retourne null si rien n'a encore été configuré : c'est une
+// information facultative, purement informative.
+export function getGameWinCondition(name) {
+  return liveGames.find((g) => g.id === name)?.winCondition || null;
+}
+
+// Enregistre/met à jour la condition de victoire d'un jeu. { merge: true }
+// est indispensable ici : pour un jeu de base, ce document n'a pas
+// forcément de champ "name" (voir getAllGames ci-dessus) et on ne veut
+// surtout pas l'écraser (ni écraser un futur champ ajouté plus tard).
+export async function setGameWinCondition(name, type, value) {
+  await setDoc(
+    doc(gamesCol, name),
+    { winCondition: { type, value: Number(value) } },
+    { merge: true }
+  );
+}
+
+export function winConditionLabel(wc) {
+  if (!wc) return null;
+  if (wc.type === "point_maximal") return `Objectif : ${wc.value} points`;
+  if (wc.type === "point_defaite") return `Points de vie de départ : ${wc.value} (éliminer l'adversaire)`;
+  return null;
 }
 
 // Toujours résoudre la décoration même si elle n'est plus publiée : sinon un
@@ -438,11 +472,16 @@ export async function deleteTag(id) {
   await deleteDoc(doc(tagsCol, id));
 }
 
-// Jeux (TCG) : pas de modification une fois créés (comme les autres
+// Jeux (TCG) : pas de modification du nom une fois créé (comme les autres
 // catalogues), juste ajout — un nom en double (même en base) est bloqué
 // côté appel pour éviter deux entrées identiques dans les menus déroulants.
+// L'id du document est le nom exact du jeu (au lieu d'un id aléatoire) : ça
+// permet à un jeu de base (Pokémon, Lorcana...), qui n'a jamais eu de
+// document Firestore avant, de recevoir lui aussi un document au même
+// endroit — uniquement pour porter sa condition de victoire (voir
+// setGameWinCondition) — sans jamais créer de doublon dans les menus.
 export async function createGame(name) {
-  await addDoc(gamesCol, { name: name.trim(), createdAt: serverTimestamp() });
+  await setDoc(doc(gamesCol, name.trim()), { name: name.trim(), createdAt: serverTimestamp() });
 }
 
 // Couleur de texte lisible (noir ou blanc) selon la luminosité perçue de la

@@ -39,6 +39,7 @@ import {
   hideAllViews,
   openPlayerProfileModal,
 } from "./app.js";
+import { getAllGames, getGameWinCondition } from "./live-catalog.js";
 
 const seasonsCol = collection(db, "seasons");
 const tagsCol = collection(db, "tags");
@@ -86,19 +87,47 @@ export function getActiveSeason(seasons, todayStr = localDateStr()) {
 // Calcule, pour CHAQUE joueur apparaissant dans au moins un duel validé de
 // la saison, ses points (plafonnés à MAX_POINTS_PER_DAY par jour calendaire),
 // son nombre de matchs/victoires/défaites (jamais plafonnés, contrairement
-// aux points). `duels` = tous les documents de dailySession/current/duels
-// (accumulés depuis toujours, filtrés ici par date de résolution).
-export function computeSeasonStandings(duels, season) {
-  const standings = {}; // uid -> { points, wins, losses, matches }
+// aux points), et ses "points cumulés" — un DÉPARTAGE, pas un classement en
+// soi (voir buildLeaderboardRows) : pour chaque duel de la saison, une
+// performance est ramenée sur une base de 100 par rapport à la "condition
+// pour gagner" configurée sur ce jeu (voir js/live-catalog.js), pour que
+// jouer un jeu où il faut 40 points ne pèse pas 2× plus qu'un jeu où il en
+// faut 20. Cette performance dépend du TYPE de condition :
+//   - "point_maximal" (course à un score) : le score obtenu par le joueur
+//     lui-même, ramené sur 100 — ex. 15 points sur un jeu qui en demande 20
+//     -> 75, qu'il ait gagné ou perdu ce duel-là.
+//   - "point_defaite" (points de vie de départ, élimination) : les
+//     "points de vie" saisis dans le formulaire de résultat sont ceux qui
+//     RESTENT à chaque joueur à la fin du duel, donc la performance de CE
+//     joueur, c'est plutôt les dégâts qu'IL a infligés à son adversaire —
+//     (vie de départ − vie restante de l'ADVERSAIRE), ramené sur 100. Sans
+//     ça, un joueur qui perd (0 point de vie restant) aurait toujours 0
+//     point cumulé, même après un match très serré — alors qu'avec les
+//     dégâts infligés, il garde le crédit de la vie qu'il a fait perdre à
+//     son adversaire avant de mourir, symétrique du cas "point_maximal".
+// `duels` = tous les documents de dailySession/current/duels (accumulés
+// depuis toujours, filtrés ici par date de résolution). `gameWinConditions`
+// = { [nomDuJeu]: { type, value } }, un jeu sans condition configurée ne
+// contribue simplement à aucun point cumulé pour ce duel-là (ni pour l'un ni
+// pour l'autre joueur).
+export function computeSeasonStandings(duels, season, gameWinConditions = {}) {
+  const standings = {}; // uid -> { points, wins, losses, matches, pointsCumules }
   const dayPoints = {}; // uid -> { "YYYY-MM-DD": pointsBruts }
 
   function bump(uid, won, dateStr) {
-    if (!standings[uid]) standings[uid] = { points: 0, wins: 0, losses: 0, matches: 0 };
+    if (!standings[uid]) standings[uid] = { points: 0, wins: 0, losses: 0, matches: 0, pointsCumules: 0 };
     if (!dayPoints[uid]) dayPoints[uid] = {};
     standings[uid].matches += 1;
     if (won) standings[uid].wins += 1;
     else standings[uid].losses += 1;
     dayPoints[uid][dateStr] = (dayPoints[uid][dateStr] || 0) + (won ? WIN_POINTS : LOSS_POINTS);
+  }
+
+  // Ajoute la performance de CE joueur dans CE duel (déjà ramenée sur 100,
+  // plafonnée des deux côtés) à ses points cumulés de la saison.
+  function bumpPointsCumules(uid, ratio) {
+    if (!standings[uid] || !Number.isFinite(ratio)) return;
+    standings[uid].pointsCumules += Math.max(0, Math.min(100, ratio));
   }
 
   (duels || []).forEach((d) => {
@@ -108,20 +137,54 @@ export function computeSeasonStandings(duels, season) {
     if (!d.resultFrom || !d.resultTo) return;
     bump(d.fromUid, !!d.resultFrom.iWon, dateStr);
     bump(d.toUid, !!d.resultTo.iWon, dateStr);
+
+    const wc = gameWinConditions[d.game];
+    if (wc && wc.value > 0) {
+      if (wc.type === "point_defaite") {
+        // Dégâts infligés = vie de départ − vie restante de l'ADVERSAIRE.
+        // resultFrom.oppScore et resultTo.myScore désignent tous les deux
+        // "la vie restante de toUid" (les deux résultats sont vérifiés
+        // concordants avant qu'un duel passe à "termine") — l'un ou l'autre
+        // fait donc l'affaire.
+        const damageByFrom = wc.value - Number(d.resultFrom.oppScore);
+        const damageByTo = wc.value - Number(d.resultTo.oppScore);
+        bumpPointsCumules(d.fromUid, (damageByFrom / wc.value) * 100);
+        bumpPointsCumules(d.toUid, (damageByTo / wc.value) * 100);
+      } else {
+        const fromRatio = (Number(d.resultFrom.myScore) / wc.value) * 100;
+        const toRatio = (Number(d.resultTo.myScore) / wc.value) * 100;
+        bumpPointsCumules(d.fromUid, fromRatio);
+        bumpPointsCumules(d.toUid, toRatio);
+      }
+    }
   });
 
   Object.keys(standings).forEach((uid) => {
     const capped = Object.values(dayPoints[uid] || {}).reduce((sum, raw) => sum + Math.min(raw, MAX_POINTS_PER_DAY), 0);
     standings[uid].points = capped;
+    standings[uid].pointsCumules = Math.round(standings[uid].pointsCumules);
   });
 
   return standings;
 }
 
+// Construit, à partir du catalogue de jeux, la table { nomDuJeu: {type,value} }
+// attendue par computeSeasonStandings — un jeu sans condition configurée est
+// simplement absent de la table.
+export function buildGameWinConditionsMap() {
+  const map = {};
+  getAllGames().forEach((name) => {
+    const wc = getGameWinCondition(name);
+    if (wc) map[name] = wc;
+  });
+  return map;
+}
+
 // Fusionne le classement calculé avec TOUS les comptes existants (un joueur
 // qui n'a jamais joué apparaît quand même, à 0) puis trie par points
-// décroissants (départage : victoires, puis moins de matchs joués, puis
-// pseudo pour un ordre toujours stable).
+// décroissants (départage : points cumulés — voir computeSeasonStandings —,
+// puis victoires, puis moins de matchs joués, puis pseudo pour un ordre
+// toujours stable).
 export function buildLeaderboardRows(usersAll, standings) {
   return usersAll
     .map((u) => ({
@@ -129,9 +192,16 @@ export function buildLeaderboardRows(usersAll, standings) {
       pseudo: u.pseudo || "?",
       photoDataUrl: u.photoDataUrl || null,
       decorations: u.decorations || null,
-      ...(standings[u.id] || { points: 0, wins: 0, losses: 0, matches: 0 }),
+      ...(standings[u.id] || { points: 0, wins: 0, losses: 0, matches: 0, pointsCumules: 0 }),
     }))
-    .sort((a, b) => b.points - a.points || b.wins - a.wins || a.matches - b.matches || a.pseudo.localeCompare(b.pseudo));
+    .sort(
+      (a, b) =>
+        b.points - a.points ||
+        b.pointsCumules - a.pointsCumules ||
+        b.wins - a.wins ||
+        a.matches - b.matches ||
+        a.pseudo.localeCompare(b.pseudo)
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -329,11 +399,12 @@ function renderPlayerArea() {
     return;
   }
 
-  const standings = computeSeasonStandings(duels, active);
+  const gameWinConditions = buildGameWinConditionsMap();
+  const standings = computeSeasonStandings(duels, active, gameWinConditions);
   const rows = buildLeaderboardRows(usersAll, standings);
   const myUid = getCurrentUid();
   const myIndex = rows.findIndex((r) => r.id === myUid);
-  const mine = myIndex >= 0 ? rows[myIndex] : { points: 0, wins: 0, losses: 0, matches: 0 };
+  const mine = myIndex >= 0 ? rows[myIndex] : { points: 0, wins: 0, losses: 0, matches: 0, pointsCumules: 0 };
   const myRank = myIndex >= 0 ? myIndex + 1 : rows.length;
 
   maybeGrantSeasonTag(active, mine.matches);
@@ -346,7 +417,9 @@ function renderPlayerArea() {
       <div class="stat-box"><b>${mine.matches}</b><span>Matchs</span></div>
       <div class="stat-box"><b>${mine.wins}</b><span>Victoires</span></div>
       <div class="stat-box"><b>${mine.losses}</b><span>Défaites</span></div>
+      <div class="stat-box"><b>${mine.pointsCumules}</b><span>Points cumulés</span></div>
     </div>
+    <p class="settings-note">« Points cumulés » : sert uniquement à départager deux joueurs à égalité de points — la moyenne (sur 100) de tes scores dans chaque duel de la saison, par rapport à la condition de victoire du jeu joué (pas de condition configurée = ce duel n'y contribue pas).</p>
     <p class="settings-note">Ta place actuelle : <b>${myRank}${myRank === 1 ? "ère" : "ème"}</b> sur ${rows.length}.</p>
     <div class="manage-grid-label">Classement de la saison</div>
     <div id="season-leaderboard"></div>

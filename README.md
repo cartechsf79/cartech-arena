@@ -1,20 +1,36 @@
-# Car'Tech Arena — v8
+# Car'Tech Arena — v8.1
 
-Cette version ajoute un vrai **système de saisons** (points gagnés via le
-Duel du jour, classement, tag automatique), confirme que fermer une
-session du Duel du jour **expulse maintenant tout le monde** (déjà
-corrigé en v7.1 — vérifié à nouveau ici, rien de plus à faire), et ajoute
-une **barre de recherche** en haut de la liste des joueurs de l'écran
-d'accueil. Voir "Nouveau dans cette version — Système de saisons" plus bas
-pour le détail complet des règles (points, plafond, tag, classement).
+Cette version ajoute, directement dans le **Duel du jour**, un **raccourci**
+vers "Saison actuelle", la possibilité de définir une **condition pour
+gagner** (score à atteindre, ou points de vie de départ) pour chaque jeu —
+y compris les jeux de base (Pokémon, Lorcana, One Piece) — et une nouvelle
+statistique **"Points cumulés"** dans "Saison actuelle", qui sert
+uniquement à départager deux joueurs à égalité de points. Voir "Nouveau
+dans cette version — condition de victoire par jeu et points cumulés" plus
+bas pour le détail complet.
 
-**Republication des règles Firestore obligatoire pour cette version**
-(nouvelle collection `seasons`, et une règle très ciblée qui permet à un
-joueur de s'attribuer lui-même le tag de la saison en cours après son
-premier match — voir plus bas pour le détail de ce que ça autorise
-exactement).
+**Pas de republication des règles Firestore nécessaire pour cette
+version** — les nouveautés utilisent le même système d'autorisations
+(organisateur uniquement) que le reste des catalogues, déjà en place
+depuis la v8. Republie quand même les fichiers (voir "Mise à jour"
+ci-dessous).
 
 ---
+
+## Historique — v8
+
+Cette version ajoutait un vrai **système de saisons** (points gagnés via
+le Duel du jour, classement, tag automatique), confirmait que fermer une
+session du Duel du jour **expulse maintenant tout le monde** (déjà
+corrigé en v7.1 — vérifié à nouveau ici, rien de plus à faire), et
+ajoutait une **barre de recherche** en haut de la liste des joueurs de
+l'écran d'accueil. Voir "Nouveau dans cette version — Système de saisons"
+plus bas pour le détail complet des règles (points, plafond, tag,
+classement).
+
+Elle nécessitait une republication des règles Firestore (nouvelle
+collection `seasons`, et une règle très ciblée qui permet à un joueur de
+s'attribuer lui-même le tag de la saison en cours après son premier match).
 
 ## Historique — v7.1
 
@@ -97,14 +113,14 @@ d'avoir à activer un mode payant.
    changes"). `js/firebase-config.js` contient déjà tes vraies clés et ton
    email organisateur, pas besoin d'y retoucher.
 
-2. **Republie les règles Firestore — cette étape est indispensable pour
-   cette version** (nouvelle règle de confidentialité des décorations non
-   publiées, en plus des règles de suppression) : Firebase Console >
-   Firestore Database > onglet "Règles" > remplace tout le contenu par
-   celui de `firestore.rules` > "Publier". Vérifie bien qu'il n'y a **pas
-   de message d'erreur en rouge** après avoir cliqué sur "Publier", et
-   qu'un indicateur du style "Dernière publication : à l'instant" apparaît
-   en haut — sinon les anciennes règles restent actives et rien ne change
+2. **Republie les règles Firestore** (pas de changement de règle dans
+   cette version précise, mais autant garder l'habitude et être sûr que
+   c'est bien synchronisé) : Firebase Console > Firestore Database >
+   onglet "Règles" > remplace tout le contenu par celui de
+   `firestore.rules` > "Publier". Vérifie bien qu'il n'y a **pas de
+   message d'erreur en rouge** après avoir cliqué sur "Publier", et qu'un
+   indicateur du style "Dernière publication : à l'instant" apparaît en
+   haut — sinon les anciennes règles restent actives et rien ne change
    côté site, même si le code (JS/HTML) est à jour.
 
 3. Vercel redéploiera automatiquement dès que GitHub reçoit les nouveaux
@@ -439,6 +455,81 @@ que ça ne peut fonctionner que pour LE tag de la saison en cours, une
 seule fois, sans jamais pouvoir toucher à un autre tag ou en retirer un —
 testé et vérifié qu'un joueur ne peut pas s'en servir pour s'attribuer un
 tag "récompense" normal.
+
+## Nouveau dans cette version — condition de victoire par jeu et points cumulés
+
+### Raccourci "Saison actuelle" depuis le Duel du jour
+
+Un bouton **🏅** apparaît maintenant en haut de l'écran **Duel du jour**,
+à côté du titre — il amène directement sur "Saison actuelle" sans avoir à
+repasser par l'écran d'accueil.
+
+### Condition pour gagner, par jeu
+
+Dans **Espace organisateur > Jeux**, chaque jeu — y compris les 3 jeux de
+base (Pokémon TCG, Lorcana, One Piece Card Game), pas seulement ceux que
+tu crées toi-même — peut maintenant recevoir une **condition pour
+gagner** facultative, avec deux types au choix :
+
+- **Point maximal** : le nombre de points qu'il faut atteindre pour
+  gagner la partie (ex. 20 points).
+- **Point de défaite** : les points de vie de départ, pour un jeu où le
+  but est d'éliminer l'adversaire (ex. 40 points de vie).
+
+Clique sur "Définir une condition" (ou "Modifier la condition" si elle
+est déjà réglée) sous le jeu concerné, choisis le type, indique la
+valeur, "Enregistrer". Cette information est ensuite affichée aux
+joueurs pendant le Duel du jour — dans le formulaire de proposition de
+duel, et sur la carte du duel en cours — comme simple rappel, et sert
+aussi de base au calcul des "points cumulés" ci-dessous.
+
+C'est **entièrement facultatif** : un jeu sans condition définie continue
+de fonctionner exactement comme avant, la seule différence est qu'il ne
+contribue pas aux "points cumulés" (voir plus bas).
+
+### Nouvelle statistique "Points cumulés" (départage de classement)
+
+Dans **🏅 Saison actuelle**, une 5e statistique apparaît : **Points
+cumulés**. Elle ne sert **qu'à départager deux joueurs à égalité de
+points de saison** (les points classiques : victoire = 3, défaite = 1,
+plafonnés à 15/jour) — plus précis que de les laisser à égalité pure —
+et n'a aucun autre effet sur le jeu.
+
+Le calcul, pour rester équitable entre des jeux qui n'ont pas la même
+"condition pour gagner", ramène toujours la performance de CHAQUE joueur
+sur une base de 100 par rapport à la condition configurée — mais la façon
+de calculer cette performance dépend du type de condition du jeu joué :
+
+- **Jeu en "Point maximal"** (course à un score) : c'est le score obtenu
+  par le joueur lui-même dans ce duel. Exemple : 15 points sur un jeu où
+  il en faut 20 pour gagner → 15 ÷ 20 × 100 = **75 points cumulés** pour
+  ce match (qu'il ait gagné ou perdu ce duel précis — c'est le score
+  obtenu qui compte, pas le résultat).
+- **Jeu en "Point de défaite"** (points de vie de départ, élimination) :
+  comme les points de vie qu'on saisit dans le formulaire de résultat
+  sont ceux qui **restent** à chacun à la fin (0 pour celui qui est
+  éliminé), le score obtenu ne peut pas servir tel quel — sinon le
+  perdant, forcément à 0 point de vie restant, aurait toujours 0 point
+  cumulé, même après un match très serré. Le calcul utilise donc plutôt
+  les **dégâts infligés** par chaque joueur : (points de vie de départ −
+  points de vie restants de l'ADVERSAIRE). Exemple concret (celui que tu
+  m'as donné) : 50 points de vie de départ, un joueur meurt (0 restant),
+  l'autre a 30 points de vie restants. Le gagnant a infligé 50 − 0 = 50
+  dégâts sur 50 → **100 points cumulés**. Le perdant, lui, a quand même
+  infligé 50 − 30 = 20 dégâts avant de mourir → **40 points cumulés** (pas
+  0) — il garde le crédit d'avoir bien résisté, symétrique du cas "Point
+  maximal" ci-dessus. Pour que ce calcul fonctionne, le formulaire de
+  résultat du Duel du jour demande explicitement "tes points de vie
+  restants" / "points de vie restants de l'adversaire" dès que le jeu
+  joué est configuré en "Point de défaite".
+
+Dans les deux cas : un jeu qui demande une valeur plus grande (ex. 40) ne
+"pèse" pas plus lourd dans ce calcul qu'un jeu qui en demande moins (ex.
+20), grâce à la mise à l'échelle sur 100. Un duel joué sur un jeu **sans
+condition de victoire configurée** ne contribue à aucun point cumulé (ni
+pour l'un ni pour l'autre joueur), et une performance qui dépasserait
+100% (ex. un score supérieur à la condition) est plafonnée à 100 pour ce
+match, pour ne pas avantager artificiellement un score disproportionné.
 
 ## Ce qui est ajouté depuis la v5 — personnalisation des profils
 

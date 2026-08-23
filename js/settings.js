@@ -53,6 +53,9 @@ import {
   deleteTag,
   getAllGames,
   createGame,
+  getGameWinCondition,
+  setGameWinCondition,
+  winConditionLabel,
   downloadDecorationTemplate,
   downloadThemeBgTemplate,
 } from "./live-catalog.js";
@@ -1055,16 +1058,105 @@ async function handleAdminTagSubmit(e) {
 }
 
 // ---------------------------------------------------------------------------
-// Jeux (TCG) — pas de modification une fois créés (juste ajout), comme les
-// autres catalogues : les jeux "d'origine" (catalog.js) sont affichés pour
-// information mais ne sont pas des chips cliquables (rien à modifier dessus).
+// Jeux (TCG) — le NOM d'un jeu n'est jamais modifiable une fois créé (juste
+// ajout), comme les autres catalogues. En revanche, chaque jeu — y compris
+// les jeux "d'origine" (Pokémon, Lorcana, One Piece...) — peut recevoir une
+// "condition pour gagner" facultative : soit un score à atteindre ("Point
+// maximal"), soit des points de vie de départ ("Point de défaite", le but
+// étant d'éliminer l'adversaire). Cette info est purement indicative — elle
+// sert à afficher un rappel pendant le Duel du jour et, surtout, de base au
+// calcul des "points cumulés" de la saison (voir season.js).
 // ---------------------------------------------------------------------------
+let editingGameName = null;
+
+function toggleEditGame(name) {
+  editingGameName = editingGameName === name ? null : name;
+  renderGameManageList();
+}
+
+function buildGameWinConditionForm(name, wc) {
+  const form = document.createElement("form");
+  form.className = "admin-game-wc-form";
+
+  const select = document.createElement("select");
+  select.innerHTML = `
+    <option value="point_maximal">Point maximal (score à atteindre)</option>
+    <option value="point_defaite">Point de défaite (points de vie de départ)</option>
+  `;
+  select.value = wc?.type || "point_maximal";
+
+  const valueInput = document.createElement("input");
+  valueInput.type = "number";
+  valueInput.min = "1";
+  valueInput.required = true;
+  valueInput.placeholder = "Valeur";
+  valueInput.value = wc?.value ?? "";
+
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "submit";
+  saveBtn.className = "btn-small btn-primary";
+  saveBtn.textContent = "Enregistrer";
+
+  form.appendChild(select);
+  form.appendChild(valueInput);
+  form.appendChild(saveBtn);
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const value = Number(valueInput.value);
+    if (!value || value <= 0) {
+      showToast("Indique une valeur supérieure à 0.", true);
+      return;
+    }
+    try {
+      await setGameWinCondition(name, select.value, value);
+      editingGameName = null;
+      showToast("Condition de victoire enregistrée !");
+      renderGameManageList();
+    } catch (err) {
+      showToast(friendlyError(err), true);
+    }
+  });
+
+  return form;
+}
+
 function renderGameManageList() {
   const list = $("#admin-game-list");
   if (!list) return;
-  list.innerHTML = getAllGames()
-    .map((name) => `<div class="chip"><div class="chip-label">${escapeHtml(name)}</div></div>`)
-    .join("");
+  list.innerHTML = "";
+  getAllGames().forEach((name) => {
+    const wc = getGameWinCondition(name);
+    const row = document.createElement("div");
+    row.className = "admin-manage-row";
+
+    const chip = document.createElement("div");
+    chip.className = "chip" + (editingGameName === name ? " active" : "");
+    chip.innerHTML = `
+      <div class="chip-label">${escapeHtml(name)}</div>
+      <div class="chip-sub">${wc ? escapeHtml(winConditionLabel(wc)) : "Aucune condition de victoire définie"}</div>
+    `;
+    chip.onclick = () => toggleEditGame(name);
+    row.appendChild(chip);
+
+    const actions = document.createElement("div");
+    actions.className = "admin-manage-actions";
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "btn-small";
+    editBtn.textContent = wc ? "Modifier la condition" : "Définir une condition";
+    editBtn.onclick = (e) => {
+      e.stopPropagation();
+      toggleEditGame(name);
+    };
+    actions.appendChild(editBtn);
+    row.appendChild(actions);
+
+    list.appendChild(row);
+    if (editingGameName === name) {
+      list.appendChild(buildGameWinConditionForm(name, wc));
+    }
+  });
 }
 
 async function handleAdminGameSubmit(e) {

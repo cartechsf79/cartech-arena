@@ -17,7 +17,8 @@ import {
 import { db } from "./firebase-init.js";
 import { $, getCurrentProfile, getCurrentUid, showToast, friendlyError, renderAvatar, hideAllViews, openPlayerProfileModal } from "./app.js";
 import { FORMATS, findFormat } from "./catalog.js";
-import { getAllGames } from "./live-catalog.js";
+import { getAllGames, getGameWinCondition, winConditionLabel } from "./live-catalog.js";
+import { showSeasonScreen } from "./season.js";
 
 // Toute action Firestore peut échouer (règles de sécurité, réseau...) — on
 // affiche toujours une erreur lisible plutôt que de laisser planter en
@@ -437,6 +438,7 @@ function renderPlayerArea() {
   wireIncomingProposalEvents(incoming[0]);
   wireActiveDuelEvents(activeDuel);
   restoreInputs(preserved);
+  updateProposeWcInfo();
 }
 
 function availableOthers() {
@@ -473,13 +475,20 @@ function renderAvailableList() {
   return html;
 }
 
+function proposeGameWcInfoHtml(game) {
+  const wc = getGameWinCondition(game);
+  return wc ? `<p class="settings-note" id="dd-propose-wc-info">🎯 ${escapeHtml(winConditionLabel(wc))}</p>` : `<p class="settings-note" id="dd-propose-wc-info"></p>`;
+}
+
 function renderProposeForm(target) {
-  const gameOptions = getAllGames().map((g) => `<option value="${g}">${g}</option>`).join("");
+  const games = getAllGames();
+  const gameOptions = games.map((g) => `<option value="${g}">${g}</option>`).join("");
   const formatOptions = FORMATS.map((f) => `<option value="${f.id}">${f.label}</option>`).join("");
   return `
     <div class="dd-propose-form">
       <label for="dd-propose-game">Jeu</label>
       <select id="dd-propose-game">${gameOptions}</select>
+      ${proposeGameWcInfoHtml(games[0])}
       <label for="dd-propose-format">Format</label>
       <select id="dd-propose-format">${formatOptions}</select>
       <button class="btn btn-primary" type="button" id="dd-btn-send-proposal">Envoyer la proposition à ${escapeHtml(target.pseudo)}</button>
@@ -513,13 +522,18 @@ function renderActiveDuelCard(duel) {
     litigeNote = `<p class="dd-error">⚠️ Vos résultats ne concordent pas — corrigez et renvoyez.</p>`;
   }
 
+  const wc = getGameWinCondition(duel.game);
+  const wcNote = wc ? `<p class="settings-note">🎯 ${escapeHtml(winConditionLabel(wc))}</p>` : "";
+
   if (myResult) {
+    const sentLabel = wc?.type === "point_defaite" ? "Vie restante envoyée" : "Ton résultat envoyé";
     return `
       <div class="dd-notif">
         <h3>⚔️ Duel en cours contre ${escapeHtml(oppPseudo)}</h3>
         <p class="settings-note">${escapeHtml(duel.game)} — ${format.label}</p>
+        ${wcNote}
         ${litigeNote}
-        <p class="settings-note">Ton résultat envoyé : ${myResult.myScore} - ${myResult.oppScore}, ${myResult.iWon ? "victoire" : "défaite"}. En attente de ${escapeHtml(oppPseudo)}…</p>
+        <p class="settings-note">${sentLabel} : ${myResult.myScore} - ${myResult.oppScore}, ${myResult.iWon ? "victoire" : "défaite"}. En attente de ${escapeHtml(oppPseudo)}…</p>
         <button class="btn btn-ghost" type="button" id="dd-btn-edit-result">Corriger mon résultat</button>
       </div>
     `;
@@ -529,23 +543,41 @@ function renderActiveDuelCard(duel) {
     <div class="dd-notif">
       <h3>⚔️ Duel en cours contre ${escapeHtml(oppPseudo)}</h3>
       <p class="settings-note">${escapeHtml(duel.game)} — ${format.label}</p>
+      ${wcNote}
       ${litigeNote}
-      ${renderResultForm()}
+      ${renderResultForm(wc)}
     </div>
   `;
 }
 
-function renderResultForm() {
+// Les libellés changent selon le type de condition de victoire du jeu :
+// pour "point_defaite" (points de vie de départ), on demande explicitement
+// la vie RESTANTE de chacun à la fin du duel (0 pour celui qui est éliminé)
+// — c'est ce que season.js utilise ensuite pour calculer les dégâts
+// infligés par chacun (voir computeSeasonStandings). Pour "point_maximal"
+// (ou aucune condition définie), on garde les libellés génériques d'origine.
+function renderResultForm(wc) {
+  const isLifePoints = wc?.type === "point_defaite";
+  const myLabel = isLifePoints ? "Tes points de vie restants (0 si éliminé)" : "Ton score";
+  const oppLabel = isLifePoints ? "Points de vie restants de l'adversaire" : "Score de l'adversaire";
   return `
     <form id="dd-result-form">
-      <label for="dd-my-score">Ton score</label>
+      <label for="dd-my-score">${myLabel}</label>
       <input type="number" id="dd-my-score" min="0" required>
-      <label for="dd-opp-score">Score de l'adversaire</label>
+      <label for="dd-opp-score">${oppLabel}</label>
       <input type="number" id="dd-opp-score" min="0" required>
       <label><input type="checkbox" id="dd-i-won" style="width:auto;display:inline-block;"> J'ai gagné</label>
       <button class="btn btn-primary" type="submit">Valider mon résultat</button>
     </form>
   `;
+}
+
+function updateProposeWcInfo() {
+  const select = $("#dd-propose-game");
+  const info = $("#dd-propose-wc-info");
+  if (!select || !info) return;
+  const wc = getGameWinCondition(select.value);
+  info.textContent = wc ? `🎯 ${winConditionLabel(wc)}` : "";
 }
 
 function wireAvailableListEvents() {
@@ -559,6 +591,8 @@ function wireAvailableListEvents() {
     btn.addEventListener("click", () => openPlayerProfileModal(btn.dataset.uid));
   });
   $("#dd-btn-send-proposal")?.addEventListener("click", () => withErrorToast(() => proposeDuel(proposingToUid)));
+  $("#dd-propose-game")?.addEventListener("change", updateProposeWcInfo);
+  updateProposeWcInfo();
 
   // Photos de profil des joueurs disponibles (pas encore affichées tant que
   // ces lignes n'existent pas dans le DOM, d'où l'appel ici plutôt qu'au
@@ -617,4 +651,13 @@ function closeDailyDuelScreen() {
 document.addEventListener("DOMContentLoaded", () => {
   $("#btn-open-daily-duel")?.addEventListener("click", showDailyDuelScreen);
   $("#btn-close-daily-duel")?.addEventListener("click", closeDailyDuelScreen);
+  // Raccourci vers "Saison actuelle" directement depuis le Duel du jour — on
+  // arrête bien les écouteurs du Duel du jour avant de partir (comme le fait
+  // "Retour"), pour ne pas les laisser tourner inutilement en fond pendant
+  // qu'on consulte la saison.
+  $("#btn-daily-duel-open-season")?.addEventListener("click", () => {
+    stopListening();
+    proposingToUid = null;
+    showSeasonScreen();
+  });
 });
