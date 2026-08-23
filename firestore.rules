@@ -42,6 +42,59 @@ service cloud.firestore {
         && request.auth.token.email.lower() == 'cartechsf79@gmail.com';
     }
 
+    // --------------------------------------------------------------------
+    // Tags de profil : jusqu'à 5 affichés en même temps ("active"). Un tag
+    // est utilisable soit parce qu'il est explicitement dans "owned" (donné
+    // par l'organisateur), soit parce qu'il est marqué "défaut" par
+    // l'organisateur (disponible pour tout le monde dès sa création, sans
+    // avoir besoin d'être ajouté à "owned" individuellement). Bornée à 5
+    // vérifications fixes, comme allGamesMatch plus haut, car les règles
+    // Firestore ne permettent pas de boucler sur une liste de taille libre.
+    // --------------------------------------------------------------------
+    function tagUsable(tagId, owned) {
+      return tagId in owned
+        || (exists(/databases/$(database)/documents/tags/$(tagId))
+            && get(/databases/$(database)/documents/tags/$(tagId)).data.defaultOwned == true);
+    }
+    function tagsActiveValid(active, owned) {
+      return active is list && active.size() <= 5
+        && (active.size() < 1 || tagUsable(active[0], owned))
+        && (active.size() < 2 || tagUsable(active[1], owned))
+        && (active.size() < 3 || tagUsable(active[2], owned))
+        && (active.size() < 4 || tagUsable(active[3], owned))
+        && (active.size() < 5 || tagUsable(active[4], owned));
+    }
+
+    // --------------------------------------------------------------------
+    // Fonctions utilitaires pour les matchs d'Événement : un match se joue
+    // en plusieurs manches (1/3/5 selon bo1/bo3/bo5), chaque joueur envoie
+    // TOUT son tableau de résultats en un seul coup (jamais rempli à
+    // moitié), donc on compare 2 tableaux de même taille, indice par
+    // indice (bornée à 5 car aucun format ne dépasse le bo5).
+    // --------------------------------------------------------------------
+    function gameMatches(g1, g2) {
+      return g1 != null && g2 != null
+        && g1.myScore == g2.oppScore
+        && g1.oppScore == g2.myScore
+        && g1.iWon == !g2.iWon;
+    }
+    function allGamesMatch(list1, list2) {
+      return list1 != null && list2 != null && list1.size() == list2.size()
+        && (list1.size() < 1 || gameMatches(list1[0], list2[0]))
+        && (list1.size() < 2 || gameMatches(list1[1], list2[1]))
+        && (list1.size() < 3 || gameMatches(list1[2], list2[2]))
+        && (list1.size() < 4 || gameMatches(list1[3], list2[3]))
+        && (list1.size() < 5 || gameMatches(list1[4], list2[4]));
+    }
+    function allGamesFilled(list, expectedSize) {
+      return list != null && list.size() == expectedSize
+        && (list.size() < 1 || list[0] != null)
+        && (list.size() < 2 || list[1] != null)
+        && (list.size() < 3 || list[2] != null)
+        && (list.size() < 4 || list[3] != null)
+        && (list.size() < 5 || list[4] != null);
+    }
+
     match /users/{userId} {
 
       // Tout compte connecté peut lire les profils (classement, recherche
@@ -59,6 +112,8 @@ service cloud.firestore {
         && request.resource.data.losses == 0
         && request.resource.data.decorations.owned.size() == 0
         && request.resource.data.decorations.active == null
+        && (!('tags' in request.resource.data)
+            || (request.resource.data.tags.owned.size() == 0 && request.resource.data.tags.active.size() == 0))
         && (
           (request.resource.data.role == 'organisateur'
             && request.auth.token.email.lower() == 'cartechsf79@gmail.com')
@@ -84,9 +139,12 @@ service cloud.firestore {
           && request.resource.data.losses == resource.data.losses
           && (!('decorations' in resource.data) || request.resource.data.decorations.owned == resource.data.decorations.owned)
           && (!('theme' in resource.data) || request.resource.data.theme.owned == resource.data.theme.owned)
+          && (!('tags' in resource.data) || request.resource.data.tags.owned == resource.data.tags.owned)
           && (request.resource.data.decorations.active == null
               || request.resource.data.decorations.active in request.resource.data.decorations.owned)
           && (request.resource.data.theme.active in request.resource.data.theme.owned)
+          && (!('tags' in request.resource.data)
+              || tagsActiveValid(request.resource.data.tags.active, request.resource.data.tags.owned))
         )
       );
 
@@ -94,6 +152,32 @@ service cloud.firestore {
       // compte"). L'organisateur ne supprime pas de compte depuis le site
       // pour l'instant (à faire depuis la console Firebase si nécessaire).
       allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // ========================================================================
+    // Catalogues créés par l'organisateur : décorations de photo de profil
+    // (statiques ou animées), thèmes personnalisés, tags de profil. Tout le
+    // monde peut les lire (nécessaire pour afficher les décorations/thèmes/
+    // tags des autres joueurs) ; seul l'organisateur les crée ou les modifie.
+    // Pas de suppression pour l'instant, pour ne jamais laisser un joueur
+    // avec une référence vers un catalogue supprimé.
+    // ========================================================================
+    match /decorations/{decoId} {
+      allow read: if request.auth != null;
+      allow create, update: if isOrganizer();
+      allow delete: if false;
+    }
+
+    match /themes/{themeId} {
+      allow read: if request.auth != null;
+      allow create, update: if isOrganizer();
+      allow delete: if false;
+    }
+
+    match /tags/{tagId} {
+      allow read: if request.auth != null;
+      allow create, update: if isOrganizer();
+      allow delete: if false;
     }
 
     // ========================================================================
@@ -198,6 +282,111 @@ service cloud.firestore {
              matchResults(resource.data.resultFrom, request.resource.data.resultTo)
                ? 'termine'
                : (resource.data.resultFrom == null ? 'en_cours' : 'litige')
+           )
+      );
+
+      allow delete: if isOrganizer();
+    }
+
+    // ========================================================================
+    // "Événement" — tournoi façon suisse, géré en direct.
+    //
+    //   events/{eventId}                     -> config + statut de l'événement
+    //   events/{eventId}/participants/{uid}   -> inscription + validation
+    //   events/{eventId}/matches/{matchId}    -> appariements + résultats
+    // ========================================================================
+
+    match /events/{eventId} {
+      // Tout le monde peut voir les événements (en cours ou passés, pour
+      // l'historique).
+      allow read: if request.auth != null;
+      // Seul l'organisateur crée / démarre / fait avancer / termine un
+      // événement.
+      allow create, update, delete: if isOrganizer();
+    }
+
+    match /events/{eventId}/participants/{uid} {
+      allow read: if request.auth != null;
+
+      // Un joueur ne peut créer que SA propre inscription, toujours en
+      // liste d'attente. L'organisateur peut inscrire directement quelqu'un
+      // (déjà "inscrit").
+      allow create: if request.auth != null && (
+        (request.auth.uid == uid && request.resource.data.uid == uid
+          && request.resource.data.status == 'liste_attente')
+        || isOrganizer()
+      );
+
+      // Même logique que pour le Duel du jour : l'organisateur gère tout
+      // (valider/refuser/exclure/attribuer une place finale) ; un joueur
+      // peut seulement se retirer, ou redemander à s'inscrire après un
+      // départ / refus / exclusion. Victoires/défaites ne sont jamais
+      // stockées ici (calculées à partir de l'historique des matchs), donc
+      // pas besoin de les protéger ; la place finale ("placement") ne doit
+      // en revanche jamais bouger via une action joueur.
+      allow update: if isOrganizer() || (
+        request.auth != null && request.auth.uid == uid
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.placement == resource.data.placement
+        && (
+          (
+            resource.data.status in ['liste_attente', 'inscrit']
+            && request.resource.data.status == 'parti'
+            && request.resource.data.pseudo == resource.data.pseudo
+            && request.resource.data.photoDataUrl == resource.data.photoDataUrl
+            && request.resource.data.decorations == resource.data.decorations
+          )
+          ||
+          (
+            resource.data.status in ['parti', 'refuse', 'exclu']
+            && request.resource.data.status == 'liste_attente'
+          )
+        )
+      );
+
+      allow delete: if isOrganizer();
+    }
+
+    match /events/{eventId}/matches/{matchId} {
+      // Lecture ouverte : nécessaire pour que chacun voie les appariements
+      // et l'avancement du tournoi.
+      allow read: if request.auth != null;
+
+      // Les appariements ne sont créés que par l'organisateur (démarrage de
+      // l'événement / manche suivante).
+      allow create: if isOrganizer();
+
+      allow update: if isOrganizer() || (
+        // Le joueur 1 saisit / corrige SON tableau de résultats uniquement.
+        request.auth != null && request.auth.uid == resource.data.player1Uid
+        && resource.data.status in ['en_cours', 'litige']
+        && request.resource.data.player1Uid == resource.data.player1Uid
+        && request.resource.data.player2Uid == resource.data.player2Uid
+        && request.resource.data.gamesResult2 == resource.data.gamesResult2
+        && (
+             request.resource.data.gamesResult1 == null
+             || allGamesFilled(request.resource.data.gamesResult1, resource.data.gamesCount)
+           )
+        && request.resource.data.status == (
+             allGamesMatch(request.resource.data.gamesResult1, resource.data.gamesResult2)
+               ? 'termine'
+               : (resource.data.gamesResult2 == null ? 'en_cours' : 'litige')
+           )
+      ) || (
+        // Le joueur 2 saisit / corrige SON tableau de résultats uniquement.
+        request.auth != null && request.auth.uid == resource.data.player2Uid
+        && resource.data.status in ['en_cours', 'litige']
+        && request.resource.data.player1Uid == resource.data.player1Uid
+        && request.resource.data.player2Uid == resource.data.player2Uid
+        && request.resource.data.gamesResult1 == resource.data.gamesResult1
+        && (
+             request.resource.data.gamesResult2 == null
+             || allGamesFilled(request.resource.data.gamesResult2, resource.data.gamesCount)
+           )
+        && request.resource.data.status == (
+             allGamesMatch(resource.data.gamesResult1, request.resource.data.gamesResult2)
+               ? 'termine'
+               : (resource.data.gamesResult1 == null ? 'en_cours' : 'litige')
            )
       );
 

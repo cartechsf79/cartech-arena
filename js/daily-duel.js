@@ -15,8 +15,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 import { db } from "./firebase-init.js";
-import { $, getCurrentProfile, getCurrentUid, showToast, friendlyError, renderAvatar } from "./app.js";
-import { showPlayerProfileScreen } from "./settings.js";
+import { $, getCurrentProfile, getCurrentUid, showToast, friendlyError, renderAvatar, hideAllViews, openPlayerProfileModal } from "./app.js";
 import { GAMES, FORMATS, findFormat } from "./catalog.js";
 
 // Toute action Firestore peut échouer (règles de sécurité, réseau...) — on
@@ -541,7 +540,7 @@ function wireAvailableListEvents() {
     });
   });
   document.querySelectorAll('[data-action="view-profile"]').forEach((btn) => {
-    btn.addEventListener("click", () => withErrorToast(() => showPlayerProfileScreen(btn.dataset.uid)));
+    btn.addEventListener("click", () => openPlayerProfileModal(btn.dataset.uid));
   });
   $("#dd-btn-send-proposal")?.addEventListener("click", () => withErrorToast(() => proposeDuel(proposingToUid)));
 
@@ -587,15 +586,13 @@ function render() {
 }
 
 export function showDailyDuelScreen() {
-  $("#view-auth")?.classList.remove("active");
-  $("#view-app")?.classList.remove("active");
-  $("#view-settings")?.classList.remove("active");
+  hideAllViews();
   $("#view-daily-duel")?.classList.add("active");
   startListening();
 }
 
 function closeDailyDuelScreen() {
-  $("#view-daily-duel")?.classList.remove("active");
+  hideAllViews();
   $("#view-app")?.classList.add("active");
   stopListening();
   proposingToUid = null;

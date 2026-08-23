@@ -98,15 +98,23 @@
         </div>
 
         <button class="btn btn-primary" id="btn-open-daily-duel" type="button">⚔️ Duel du jour</button>
+        <button class="btn btn-primary" id="btn-open-event" type="button">🏆 Événement</button>
+        <button class="btn btn-ghost" id="btn-open-event-history" type="button">📜 Historique des événements</button>
 
         <!-- Visible uniquement pour le compte organisateur -->
         <div class="organizer-panel organizer-only" style="display:none;">
           <b>🛡️ Espace organisateur</b><br>
-          Le « Duel du jour » se gère depuis le bouton ci-dessus. Les outils
-          d'événement/tournoi arriveront ici à la prochaine étape.
+          Le « Duel du jour » et l'« Événement » se gèrent depuis les boutons ci-dessus. Les
+          décorations, thèmes et tags se créent dans Paramètres.
         </div>
 
         <button class="btn btn-ghost" id="btn-logout" type="button">Se déconnecter</button>
+      </div>
+
+      <div class="card" style="margin-top:14px;">
+        <h3 style="margin:0 0 4px;">Joueurs</h3>
+        <p class="settings-note">🟢 Disponible en boutique · 🔴 En combat · ⚪ Inactif</p>
+        <div id="home-players-list" class="home-players-list"></div>
       </div>
     </div>
   </div>
@@ -159,11 +167,24 @@
           <div class="photo-actions">
             <label class="btn btn-ghost photo-upload-label" for="settings-photo-input">Choisir une image</label>
             <input type="file" id="settings-photo-input" accept="image/*" style="display:none;">
+            <button class="btn btn-ghost" type="button" id="btn-recrop-photo">Recadrer la photo actuelle</button>
             <button class="btn btn-primary" type="button" id="btn-save-photo" disabled>Enregistrer la photo</button>
             <button class="btn btn-ghost" type="button" id="btn-remove-photo">Retirer la photo</button>
           </div>
         </div>
-        <p class="settings-note">L'image sera recadrée et redimensionnée automatiquement en carré 512×512.</p>
+        <p class="settings-note">Une fois une image choisie, utilise les curseurs pour la recadrer en carré (position + zoom).</p>
+
+        <div class="cropper-wrap" id="cropper-wrap" style="display:none;">
+          <div class="cropper-viewport" id="cropper-viewport">
+            <img id="cropper-image" alt="">
+          </div>
+          <label for="photo-zoom">Zoom</label>
+          <input type="range" id="photo-zoom" min="100" max="300" value="100">
+          <label for="photo-pan-x">Position horizontale</label>
+          <input type="range" id="photo-pan-x" min="0" max="100" value="50">
+          <label for="photo-pan-y">Position verticale</label>
+          <input type="range" id="photo-pan-y" min="0" max="100" value="50">
+        </div>
         <canvas id="photo-canvas" width="512" height="512" style="display:none;"></canvas>
       </div>
 
@@ -177,8 +198,16 @@
       <!-- Thème -->
       <div class="card settings-section">
         <h3>Thème</h3>
-        <p class="settings-note">Les thèmes "Trophée" sont débloqués par l'organisateur en récompense de concours.</p>
+        <p class="settings-note">Les thèmes verrouillés sont débloqués par l'organisateur en récompense de concours.</p>
         <div class="chip-grid" id="themes-grid"></div>
+      </div>
+
+      <!-- Tags -->
+      <div class="card settings-section">
+        <h3>Tags</h3>
+        <p class="settings-note">Certains tags sont disponibles pour tout le monde, d'autres sont débloqués par l'organisateur. Affiche jusqu'à 5 tags à la fois sur ton profil.</p>
+        <div class="chip-grid" id="tags-grid"></div>
+        <p class="settings-note" id="tags-active-count">0/5 tags affichés sur ton profil.</p>
       </div>
 
       <!-- Rechercher un joueur / voir un profil -->
@@ -189,6 +218,59 @@
           <button class="btn btn-primary" type="submit" style="margin-top:10px;">Rechercher</button>
         </form>
         <div id="search-player-result"></div>
+      </div>
+
+      <!-- Espace organisateur : catalogues -->
+      <div class="card settings-section organizer-only" id="section-organizer-catalog" style="display:none;">
+        <h3>🛡️ Espace organisateur — Catalogues</h3>
+        <p class="settings-note">Crée et modifie les décorations, thèmes et tags. Pour les attribuer à un joueur, utilise « Voir le profil d'un joueur » ci-dessus.</p>
+
+        <div class="manage-grid-label">Décorations de photo de profil</div>
+        <div class="chip-grid" id="admin-deco-list"></div>
+        <form id="form-admin-deco">
+          <label for="admin-deco-name">Nom</label>
+          <input type="text" id="admin-deco-name" maxlength="30" required>
+          <label for="admin-deco-type">Type</label>
+          <select id="admin-deco-type">
+            <option value="static">Statique (image)</option>
+            <option value="animated">Animée (gif)</option>
+          </select>
+          <label for="admin-deco-file">Image (nouvelle décoration, ou remplacement lors d'une modification)</label>
+          <input type="file" id="admin-deco-file" accept="image/*">
+          <button class="btn btn-primary" type="submit" id="admin-deco-submit">Créer la décoration</button>
+          <button class="btn btn-ghost" type="button" id="admin-deco-cancel" style="display:none;">Annuler la modification</button>
+        </form>
+
+        <div class="manage-grid-label">Thèmes personnalisés</div>
+        <div class="chip-grid" id="admin-theme-list"></div>
+        <form id="form-admin-theme">
+          <label for="admin-theme-name">Nom</label>
+          <input type="text" id="admin-theme-name" maxlength="30" required>
+          <div class="color-field-grid">
+            <label>Fond<input type="color" id="admin-theme-bg" value="#0f1117"></label>
+            <label>Fond secondaire<input type="color" id="admin-theme-bg2" value="#161a24"></label>
+            <label>Cartes<input type="color" id="admin-theme-panel" value="#1b202c"></label>
+            <label>Bordures<input type="color" id="admin-theme-panelborder" value="#2a3142"></label>
+            <label>Accent<input type="color" id="admin-theme-accent" value="#8b5cf6"></label>
+            <label>Accent 2<input type="color" id="admin-theme-accent2" value="#f5b942"></label>
+            <label>Texte<input type="color" id="admin-theme-text" value="#eef0f5"></label>
+            <label>Texte discret<input type="color" id="admin-theme-muted" value="#93a0b8"></label>
+          </div>
+          <button class="btn btn-primary" type="submit" id="admin-theme-submit">Créer le thème</button>
+          <button class="btn btn-ghost" type="button" id="admin-theme-cancel" style="display:none;">Annuler la modification</button>
+        </form>
+
+        <div class="manage-grid-label">Tags de profil</div>
+        <div class="chip-grid" id="admin-tag-list"></div>
+        <form id="form-admin-tag">
+          <label for="admin-tag-name">Nom</label>
+          <input type="text" id="admin-tag-name" maxlength="24" required>
+          <label for="admin-tag-color">Couleur</label>
+          <input type="color" id="admin-tag-color" value="#8b5cf6">
+          <label class="checkbox-label"><input type="checkbox" id="admin-tag-default"> Disponible pour tout le monde dès la création du compte</label>
+          <button class="btn btn-primary" type="submit" id="admin-tag-submit">Créer le tag</button>
+          <button class="btn btn-ghost" type="button" id="admin-tag-cancel" style="display:none;">Annuler la modification</button>
+        </form>
       </div>
 
       <!-- Zone de danger -->
@@ -212,6 +294,47 @@
 
       <div class="card settings-section" id="dd-organizer-panel" style="display:none;"></div>
       <div class="card settings-section" id="dd-player-area"></div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- ÉCRAN : Événement -->
+  <!-- ============================================================ -->
+  <div class="view" id="view-event">
+    <div class="app-wrap settings-wrap">
+      <div class="settings-header">
+        <button class="icon-btn" id="btn-close-event" type="button" title="Retour">←</button>
+        <h1 class="settings-title">🏆 Événement</h1>
+      </div>
+
+      <div class="card settings-section" id="ev-organizer-panel" style="display:none;"></div>
+      <div class="card settings-section" id="ev-player-area"></div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- ÉCRAN : Historique des événements -->
+  <!-- ============================================================ -->
+  <div class="view" id="view-event-history">
+    <div class="app-wrap settings-wrap">
+      <div class="settings-header">
+        <button class="icon-btn" id="btn-close-event-history" type="button" title="Retour">←</button>
+        <h1 class="settings-title">📜 Historique des événements</h1>
+      </div>
+
+      <div class="card settings-section" id="ev-history-list"></div>
+      <div class="card settings-section" id="ev-history-detail"></div>
+    </div>
+  </div>
+
+  <!-- Modale : fiche profil d'un joueur ("Voir le profil") -->
+  <div class="overlay" id="overlay-player-profile">
+    <div class="modal">
+      <div class="settings-header" style="margin-bottom:10px;">
+        <h3 style="margin:0; flex:1;">Profil</h3>
+        <button class="icon-btn" id="btn-close-player-profile" type="button" title="Fermer">✕</button>
+      </div>
+      <div id="player-profile-modal-body"></div>
     </div>
   </div>
 
@@ -255,5 +378,6 @@
   <script type="module" src="js/app.js"></script>
   <script type="module" src="js/settings.js"></script>
   <script type="module" src="js/daily-duel.js"></script>
+  <script type="module" src="js/event.js"></script>
 </body>
 </html>

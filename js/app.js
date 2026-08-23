@@ -18,7 +18,9 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 import { auth, db, ORGANIZER_EMAIL } from "./firebase-init.js";
-import { DEFAULT_OWNED_THEMES, findDecoration, applyTheme } from "./catalog.js";
+import { DEFAULT_OWNED_THEMES } from "./catalog.js";
+import { startLiveCatalogs, stopLiveCatalogs, findAnyDecoration, findAnyTag, applyThemeLive, contrastTextColor } from "./live-catalog.js";
+import { startHomePlayersListener, stopHomePlayersListener } from "./home-players.js";
 
 export const $ = (sel) => document.querySelector(sel);
 
@@ -210,9 +212,20 @@ export function renderAvatar(container, profile, size = 54) {
   container.appendChild(inner);
 
   const decoId = profile?.decorations?.active;
-  const deco = decoId ? findDecoration(decoId) : null;
-  if (deco) {
+  const deco = decoId ? findAnyDecoration(decoId) : null;
+  if (deco?.builtin) {
+    // Décoration "de base" : simple anneau en CSS (voir style.css).
     container.classList.add("has-deco", deco.css);
+  } else if (deco?.imageDataUrl) {
+    // Décoration créée par l'organisateur (statique ou animée) : une image
+    // (ou un gif) superposée par-dessus la photo, en cadre décoratif —
+    // l'animation d'un gif fonctionne nativement dans une balise <img>.
+    container.classList.add("has-deco", "has-deco-custom");
+    const overlay = document.createElement("img");
+    overlay.className = "avatar-deco-overlay";
+    overlay.src = deco.imageDataUrl;
+    overlay.alt = "";
+    container.appendChild(overlay);
   }
 }
 
@@ -238,29 +251,100 @@ export function renderProfile(profile) {
     el.style.display = isOrganizer ? "" : "none";
   });
 
-  applyTheme(profile?.theme?.active || "classique");
+  applyThemeLive(profile?.theme?.active || "classique");
+}
+
+// Utilisé par tous les écrans (Paramètres, Duel du jour, Événement…) pour
+// basculer proprement d'une vue à l'autre sans avoir à lister chaque nouvel
+// écran dans tous les autres fichiers à chaque ajout de fonctionnalité.
+export function hideAllViews() {
+  document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
 }
 
 function showAuthScreen() {
+  hideAllViews();
   $("#view-auth").classList.add("active");
-  $("#view-app").classList.remove("active");
-  $("#view-settings").classList.remove("active");
-  $("#view-daily-duel")?.classList.remove("active");
-  applyTheme("classique");
+  applyThemeLive("classique");
 }
 
 function showAppScreen() {
-  $("#view-auth").classList.remove("active");
+  hideAllViews();
   $("#view-app").classList.add("active");
-  $("#view-settings").classList.remove("active");
-  $("#view-daily-duel")?.classList.remove("active");
+}
+
+// ---------------------------------------------------------------------------
+// Fiche profil d'un joueur — petite fenêtre directement sur la page en
+// cours (pas de navigation vers un autre écran), utilisée partout où un
+// bouton "Voir le profil" apparaît (liste des joueurs de l'accueil, Duel du
+// jour...). Lecture seule ; la gestion complète (attribuer décorations,
+// thèmes, tags) reste réservée à l'écran Paramètres, accessible uniquement à
+// l'organisateur via le lien "Gérer ce joueur".
+// ---------------------------------------------------------------------------
+function escapeHtmlLocal(str) {
+  const d = document.createElement("div");
+  d.textContent = str ?? "";
+  return d.innerHTML;
+}
+
+export async function openPlayerProfileModal(targetUid) {
+  const overlay = $("#overlay-player-profile");
+  const body = $("#player-profile-modal-body");
+  if (!overlay || !body) return;
+  body.innerHTML = `<p class="settings-note">Chargement…</p>`;
+  overlay.classList.add("show");
+  try {
+    const snap = await getDoc(doc(db, "users", targetUid));
+    if (!snap.exists()) {
+      body.innerHTML = `<p class="settings-note">Profil introuvable (peut-être supprimé).</p>`;
+      return;
+    }
+    renderPlayerProfileModalContent(targetUid, snap.data());
+  } catch (err) {
+    body.innerHTML = `<p class="dd-error">${friendlyError(err)}</p>`;
+  }
+}
+
+function renderPlayerProfileModalContent(targetUid, profile) {
+  const body = $("#player-profile-modal-body");
+  if (!body) return;
+  const isOrg = profile.role === "organisateur";
+  const activeTags = (profile.tags?.active || []).map((id) => findAnyTag(id)).filter(Boolean);
+  const tagsHtml = activeTags.length
+    ? activeTags
+        .map(
+          (t) =>
+            `<span class="tag-pill" style="background:${t.color};color:${contrastTextColor(t.color)};">${escapeHtmlLocal(t.name)}</span>`
+        )
+        .join(" ")
+    : `<span class="settings-note">Aucun tag affiché.</span>`;
+  const canManage = getCurrentProfile()?.role === "organisateur" && targetUid !== getCurrentUid();
+
+  body.innerHTML = `
+    <div class="player-card" style="margin-top:0;">
+      <div class="avatar-shell" id="player-modal-avatar"></div>
+      <div class="player-card-info">
+        <div style="font-weight:800;">${escapeHtmlLocal(profile.pseudo)}</div>
+        <span class="badge ${isOrg ? "badge-organizer" : "badge-player"}">${isOrg ? "🛡️ Organisateur" : "🎮 Joueur"}</span>
+        <div class="settings-note">${profile.points ?? 0} pts · ${profile.wins ?? 0}V / ${profile.losses ?? 0}D</div>
+      </div>
+    </div>
+    <div class="player-tags">${tagsHtml}</div>
+    ${canManage ? `<button class="btn btn-ghost" type="button" id="player-modal-manage-btn">Gérer ce joueur →</button>` : ""}
+  `;
+  renderAvatar($("#player-modal-avatar"), profile, 56);
+  $("#player-modal-manage-btn")?.addEventListener("click", () => {
+    closePlayerProfileModal();
+    document.dispatchEvent(new CustomEvent("cartech:manage-player", { detail: { uid: targetUid } }));
+  });
+}
+
+export function closePlayerProfileModal() {
+  $("#overlay-player-profile")?.classList.remove("show");
 }
 
 export function showSettingsScreen() {
-  $("#view-auth").classList.remove("active");
-  $("#view-app").classList.remove("active");
+  hideAllViews();
   $("#view-settings").classList.add("active");
-  $("#view-daily-duel")?.classList.remove("active");
 }
 
 // ---------------------------------------------------------------------------
@@ -270,12 +354,24 @@ onAuthStateChanged(auth, async (user) => {
   if (!user) {
     currentProfile = null;
     currentUid = null;
+    stopLiveCatalogs();
+    stopHomePlayersListener();
     broadcastProfile();
     showAuthScreen();
     return;
   }
   currentUid = user.uid;
   try {
+    // Décorations/thèmes/tags créés par l'organisateur : chargés en direct
+    // dès la connexion, pour que l'avatar/le thème du profil se mettent à
+    // jour tout seuls si le catalogue arrive après le premier affichage (ou
+    // change pendant que le joueur est connecté).
+    startLiveCatalogs(() => {
+      if (currentProfile) renderProfile(currentProfile);
+    });
+    // Liste des joueurs de l'écran d'accueil (disponible / en combat /
+    // inactif) : démarrée dès la connexion elle aussi.
+    startHomePlayersListener();
     const profile = await ensureUserProfile(user);
     renderProfile(profile);
     showAppScreen();
@@ -310,5 +406,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.querySelectorAll(".auth-tab").forEach((el) => {
     el.addEventListener("click", () => switchAuthTab(el.dataset.tab));
+  });
+
+  $("#btn-close-player-profile")?.addEventListener("click", closePlayerProfileModal);
+  $("#overlay-player-profile")?.addEventListener("click", (e) => {
+    if (e.target.id === "overlay-player-profile") closePlayerProfileModal();
   });
 });

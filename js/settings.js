@@ -28,10 +28,29 @@ import {
 
 import { auth, db, ORGANIZER_EMAIL } from "./firebase-init.js";
 import { $, showToast, friendlyError, getCurrentProfile, getCurrentUid, renderAvatar, renderProfile, showSettingsScreen } from "./app.js";
-import { DECORATIONS, THEMES, findTheme, applyTheme } from "./catalog.js";
+import {
+  getAllDecorations,
+  getAllThemes,
+  getAllTags,
+  usableTagsFor,
+  isTagUsable,
+  findAnyTag,
+  applyThemeLive,
+  contrastTextColor,
+  compressStaticDecoImage,
+  fileToRawDataUrl,
+  MAX_ANIMATED_DECO_BYTES,
+  createDecoration,
+  updateDecoration,
+  createTheme,
+  updateTheme,
+  createTag,
+  updateTag,
+} from "./live-catalog.js";
 
 const MAX_PHOTO_BYTES = 700_000; // marge de sécurité sous la limite de 1 Mo par document Firestore
-let pendingPhotoDataUrl = null; // photo choisie mais pas encore enregistrée
+const CROP_VIEWPORT = 260; // doit correspondre à la taille CSS de .cropper-viewport
+let cropperImgObj = null; // image (déjà chargée) en cours de recadrage, ou null
 
 // ---------------------------------------------------------------------------
 // Rafraîchit l'écran principal + le cache local après une modification
@@ -57,7 +76,8 @@ function populateSettingsScreen() {
 
   $("#settings-pseudo").value = profile.pseudo || "";
   renderAvatar($("#settings-avatar-preview"), profile, 72);
-  pendingPhotoDataUrl = null;
+  cropperImgObj = null;
+  $("#cropper-wrap").style.display = "none";
   $("#btn-save-photo").disabled = true;
 
   const hasPassword = (auth.currentUser?.providerData || []).some((p) => p.providerId === "password");
@@ -66,6 +86,8 @@ function populateSettingsScreen() {
 
   renderDecorationsGrid(profile);
   renderThemesGrid(profile);
+  renderTagsGrid(profile);
+  renderOrganizerCatalogPanel();
 
   $("#search-player-result").innerHTML = "";
   $("#search-player-input").value = "";
@@ -124,7 +146,10 @@ async function handleChangePassword(e) {
 }
 
 // ---------------------------------------------------------------------------
-// Photo de profil — recadrage carré + redimensionnement 512×512 côté client
+// Photo de profil — recadrage interactif (zoom + position) puis
+// redimensionnement 512×512 côté client, comme avant. On peut recadrer une
+// image tout juste choisie, ou reprendre la photo déjà enregistrée pour la
+// repositionner sans avoir à la réimporter.
 // ---------------------------------------------------------------------------
 function fileToImage(file) {
   return new Promise((resolve, reject) => {
@@ -134,53 +159,115 @@ function fileToImage(file) {
     img.src = URL.createObjectURL(file);
   });
 }
+function dataUrlToImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
+function openCropper() {
+  $("#cropper-wrap").style.display = "";
+  $("#cropper-image").src = cropperImgObj.src;
+  $("#photo-zoom").value = 100;
+  $("#photo-pan-x").value = 50;
+  $("#photo-pan-y").value = 50;
+  updateCropperTransform();
+  $("#cropper-wrap")?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
 
 async function handlePhotoChosen(e) {
   const file = e.target.files?.[0];
   if (!file) return;
+  try {
+    cropperImgObj = await fileToImage(file);
+    openCropper();
+  } catch (err) {
+    showToast("Impossible de lire cette image.", true);
+  }
+}
 
-  const img = await fileToImage(file);
+async function handleRecropExisting() {
+  const profile = getCurrentProfile();
+  if (!profile?.photoDataUrl) {
+    showToast("Choisis d'abord une image à importer 🙂", true);
+    return;
+  }
+  try {
+    cropperImgObj = await dataUrlToImage(profile.photoDataUrl);
+    openCropper();
+  } catch (err) {
+    showToast("Impossible de recharger la photo actuelle.", true);
+  }
+}
+
+// zoom (100-300 = x1 à x3) et position (0-100, 50 = centré) sur des curseurs
+// plutôt que du glisser-déposer : plus fiable au doigt sur un téléphone, et
+// ça évite d'avoir à gérer soi-même les événements tactiles.
+function cropperGeometry() {
+  const zoom = Number($("#photo-zoom").value) / 100;
+  const baseScale = CROP_VIEWPORT / Math.min(cropperImgObj.naturalWidth, cropperImgObj.naturalHeight);
+  const scale = baseScale * zoom;
+  const dispW = cropperImgObj.naturalWidth * scale;
+  const dispH = cropperImgObj.naturalHeight * scale;
+  const maxX = Math.max(0, (dispW - CROP_VIEWPORT) / 2);
+  const maxY = Math.max(0, (dispH - CROP_VIEWPORT) / 2);
+  const panX = Number($("#photo-pan-x").value);
+  const panY = Number($("#photo-pan-y").value);
+  const tx = (panX / 100 - 0.5) * 2 * maxX;
+  const ty = (panY / 100 - 0.5) * 2 * maxY;
+  return { scale, dispW, dispH, tx, ty };
+}
+
+function updateCropperTransform() {
+  if (!cropperImgObj) return;
+  const { dispW, dispH, tx, ty } = cropperGeometry();
+  const imgEl = $("#cropper-image");
+  imgEl.style.width = dispW + "px";
+  imgEl.style.height = dispH + "px";
+  imgEl.style.transform = `translate(-50%, -50%) translate(${tx}px, ${ty}px)`;
+  $("#btn-save-photo").disabled = false;
+}
+
+function bakeCropToDataUrl() {
+  const { scale, tx, ty } = cropperGeometry();
+  const halfSrc = (CROP_VIEWPORT / 2) / scale;
+  const natCx = cropperImgObj.naturalWidth / 2 - tx / scale;
+  const natCy = cropperImgObj.naturalHeight / 2 - ty / scale;
+  let sx = natCx - halfSrc;
+  let sy = natCy - halfSrc;
+  const sSize = halfSrc * 2;
+  sx = Math.max(0, Math.min(sx, cropperImgObj.naturalWidth - sSize));
+  sy = Math.max(0, Math.min(sy, cropperImgObj.naturalHeight - sSize));
+
   const canvas = $("#photo-canvas");
   const ctx = canvas.getContext("2d");
   const SIZE = 512;
   canvas.width = SIZE;
   canvas.height = SIZE;
-
-  // Recadrage centré en carré (couvre tout le cadre, comme un "object-fit: cover")
-  const side = Math.min(img.width, img.height);
-  const sx = (img.width - side) / 2;
-  const sy = (img.height - side) / 2;
   ctx.clearRect(0, 0, SIZE, SIZE);
-  ctx.drawImage(img, sx, sy, side, side, 0, 0, SIZE, SIZE);
+  ctx.drawImage(cropperImgObj, sx, sy, sSize, sSize, 0, 0, SIZE, SIZE);
 
-  // Compression progressive jusqu'à rester sous la taille maximale
   let quality = 0.85;
   let dataUrl = canvas.toDataURL("image/jpeg", quality);
   while (dataUrl.length > MAX_PHOTO_BYTES && quality > 0.3) {
     quality -= 0.15;
     dataUrl = canvas.toDataURL("image/jpeg", quality);
   }
-
-  pendingPhotoDataUrl = dataUrl;
-  const preview = $("#settings-avatar-preview");
-  preview.innerHTML = "";
-  preview.className = "avatar-shell";
-  const inner = document.createElement("div");
-  inner.className = "avatar-inner";
-  inner.style.backgroundImage = `url("${dataUrl}")`;
-  inner.style.backgroundSize = "cover";
-  inner.style.backgroundPosition = "center";
-  preview.appendChild(inner);
-
-  $("#btn-save-photo").disabled = false;
+  return dataUrl;
 }
 
 async function handleSavePhoto() {
-  if (!pendingPhotoDataUrl) return;
+  if (!cropperImgObj) return;
   try {
-    await updateDoc(doc(db, "users", getCurrentUid()), { photoDataUrl: pendingPhotoDataUrl });
-    pendingPhotoDataUrl = null;
+    const dataUrl = bakeCropToDataUrl();
+    await updateDoc(doc(db, "users", getCurrentUid()), { photoDataUrl: dataUrl });
+    cropperImgObj = null;
+    $("#cropper-wrap").style.display = "none";
     $("#btn-save-photo").disabled = true;
+    $("#settings-photo-input").value = "";
     const profile = await refreshAfterChange();
     if (profile) renderAvatar($("#settings-avatar-preview"), profile, 72);
     showToast("Photo de profil mise à jour !");
@@ -192,7 +279,8 @@ async function handleSavePhoto() {
 async function handleRemovePhoto() {
   try {
     await updateDoc(doc(db, "users", getCurrentUid()), { photoDataUrl: null });
-    pendingPhotoDataUrl = null;
+    cropperImgObj = null;
+    $("#cropper-wrap").style.display = "none";
     $("#settings-photo-input").value = "";
     $("#btn-save-photo").disabled = true;
     await refreshAfterChange();
@@ -203,10 +291,25 @@ async function handleRemovePhoto() {
   }
 }
 
+function escapeHtml(str) {
+  const d = document.createElement("div");
+  d.textContent = str ?? "";
+  return d.innerHTML;
+}
+
 // ---------------------------------------------------------------------------
 // Décorations (soi-même) — on ne peut que choisir laquelle est active parmi
-// celles déjà débloquées ; le déblocage est réservé à l'organisateur.
+// celles déjà débloquées ; le déblocage est réservé à l'organisateur. La
+// liste fusionne les décorations "de base" et celles créées par
+// l'organisateur (statiques ou animées).
 // ---------------------------------------------------------------------------
+function decoSwatchHtml(deco) {
+  if (deco.builtin) {
+    return `<div class="chip-swatch avatar-shell has-deco ${deco.css}" style="width:34px;height:34px;"><div class="avatar-inner" style="font-size:14px;">🙂</div></div>`;
+  }
+  return `<div class="chip-swatch avatar-shell has-deco has-deco-custom" style="width:34px;height:34px;"><div class="avatar-inner" style="font-size:14px;">🙂</div><img class="avatar-deco-overlay" src="${deco.imageDataUrl}" alt=""></div>`;
+}
+
 function renderDecorationsGrid(profile) {
   const grid = $("#decorations-grid");
   grid.innerHTML = "";
@@ -219,14 +322,15 @@ function renderDecorationsGrid(profile) {
   noneChip.onclick = () => setActiveDecoration(null);
   grid.appendChild(noneChip);
 
-  DECORATIONS.forEach((deco) => {
+  getAllDecorations().forEach((deco) => {
     const isOwned = owned.includes(deco.id);
     const chip = document.createElement("div");
     chip.className = "chip" + (!isOwned ? " locked" : "") + (active === deco.id ? " active" : "");
+    const sub = isOwned ? (deco.builtin ? deco.categorie : (deco.type === "animated" ? "🎞️ Animée" : "Statique")) : "🔒 verrouillé";
     chip.innerHTML = `
-      <div class="chip-swatch avatar-shell has-deco ${deco.css}" style="width:34px;height:34px;"><div class="avatar-inner" style="font-size:14px;">🙂</div></div>
-      <div class="chip-label">${deco.label}</div>
-      <div class="chip-sub">${isOwned ? deco.categorie : "🔒 verrouillé"}</div>
+      ${decoSwatchHtml(deco)}
+      <div class="chip-label">${escapeHtml(deco.label || deco.name)}</div>
+      <div class="chip-sub">${sub}</div>
     `;
     if (isOwned) chip.onclick = () => setActiveDecoration(deco.id);
     grid.appendChild(chip);
@@ -238,27 +342,36 @@ async function setActiveDecoration(decoId) {
     await updateDoc(doc(db, "users", getCurrentUid()), { "decorations.active": decoId });
     const profile = await refreshAfterChange();
     renderDecorationsGrid(profile);
+    if (profile) renderAvatar($("#settings-avatar-preview"), profile, 72);
   } catch (err) {
     showToast(friendlyError(err), true);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Thèmes (soi-même)
+// Thèmes (soi-même) — fusionne les 6 thèmes de base et les thèmes
+// personnalisés créés par l'organisateur (toujours verrouillés par défaut,
+// comme les thèmes "Trophée").
 // ---------------------------------------------------------------------------
+function themeSwatchHtml(theme) {
+  if (theme.builtin) return `<div class="chip-swatch theme-swatch-${theme.id}"></div>`;
+  const c = theme.colors || {};
+  return `<div class="chip-swatch" style="background:linear-gradient(135deg, ${c.accent || "#8b5cf6"}, ${c.accent2 || "#5b8def"});"></div>`;
+}
+
 function renderThemesGrid(profile) {
   const grid = $("#themes-grid");
   grid.innerHTML = "";
   const owned = profile?.theme?.owned || [];
   const active = profile?.theme?.active || "classique";
 
-  THEMES.forEach((theme) => {
+  getAllThemes().forEach((theme) => {
     const isOwned = owned.includes(theme.id);
     const chip = document.createElement("div");
     chip.className = "chip" + (!isOwned ? " locked" : "") + (active === theme.id ? " active" : "");
     chip.innerHTML = `
-      <div class="chip-swatch theme-swatch-${theme.id}"></div>
-      <div class="chip-label">${theme.label}</div>
+      ${themeSwatchHtml(theme)}
+      <div class="chip-label">${escapeHtml(theme.label || theme.name)}</div>
       <div class="chip-sub">${isOwned ? "Débloqué" : "🔒 verrouillé"}</div>
     `;
     if (isOwned) chip.onclick = () => setActiveTheme(theme.id);
@@ -269,9 +382,63 @@ function renderThemesGrid(profile) {
 async function setActiveTheme(themeId) {
   try {
     await updateDoc(doc(db, "users", getCurrentUid()), { "theme.active": themeId });
-    applyTheme(themeId);
+    applyThemeLive(themeId);
     const profile = await refreshAfterChange();
     renderThemesGrid(profile);
+  } catch (err) {
+    showToast(friendlyError(err), true);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tags (soi-même) — jusqu'à 5 affichés en même temps parmi ceux débloqués
+// (donnés par l'organisateur, ou "par défaut" pour tout le monde).
+// ---------------------------------------------------------------------------
+function renderTagsGrid(profile) {
+  const grid = $("#tags-grid");
+  const counter = $("#tags-active-count");
+  if (!grid) return;
+  grid.innerHTML = "";
+  const usable = usableTagsFor(profile);
+  const active = profile?.tags?.active || [];
+  if (counter) counter.textContent = `${active.length}/5 tags affichés sur ton profil.`;
+
+  if (!usable.length) {
+    grid.innerHTML = `<p class="settings-note">Aucun tag débloqué pour l'instant.</p>`;
+    return;
+  }
+
+  usable.forEach((tag) => {
+    const isActive = active.includes(tag.id);
+    const chip = document.createElement("div");
+    chip.className = "chip" + (isActive ? " active" : "");
+    chip.innerHTML = `
+      <div class="chip-swatch" style="background:${tag.color};"></div>
+      <div class="chip-label">${escapeHtml(tag.name)}</div>
+      <div class="chip-sub">${isActive ? "✅ Affiché" : "Toucher pour afficher"}</div>
+    `;
+    chip.onclick = () => toggleActiveTag(tag.id);
+    grid.appendChild(chip);
+  });
+}
+
+async function toggleActiveTag(tagId) {
+  const profile = getCurrentProfile();
+  const active = profile?.tags?.active || [];
+  let next;
+  if (active.includes(tagId)) {
+    next = active.filter((id) => id !== tagId);
+  } else {
+    if (active.length >= 5) {
+      showToast("Maximum 5 tags en même temps — désélectionne-en un d'abord.", true);
+      return;
+    }
+    next = [...active, tagId];
+  }
+  try {
+    await updateDoc(doc(db, "users", getCurrentUid()), { "tags.active": next });
+    const updated = await refreshAfterChange();
+    renderTagsGrid(updated);
   } catch (err) {
     showToast(friendlyError(err), true);
   }
@@ -346,7 +513,17 @@ function renderPlayerCard(targetUid, targetProfile) {
 
   const tags = document.createElement("div");
   tags.className = "player-tags";
-  tags.textContent = "Tags : aucun pour le moment (arrivera prochainement).";
+  const activeTags = (targetProfile.tags?.active || []).map((id) => findAnyTag(id)).filter(Boolean);
+  if (activeTags.length) {
+    tags.innerHTML = activeTags
+      .map(
+        (t) =>
+          `<span class="tag-pill" style="background:${t.color};color:${contrastTextColor(t.color)};">${escapeHtml(t.name)}</span>`
+      )
+      .join(" ");
+  } else {
+    tags.textContent = "Aucun tag affiché.";
+  }
   resultEl.appendChild(tags);
 
   if (isOrganizer) {
@@ -364,13 +541,13 @@ function buildOrganizerManagePanel(targetUid, targetProfile) {
 
   const decoGrid = document.createElement("div");
   decoGrid.className = "chip-grid";
-  DECORATIONS.forEach((deco) => {
+  getAllDecorations().forEach((deco) => {
     const owned = (targetProfile.decorations?.owned || []).includes(deco.id);
     const chip = document.createElement("div");
     chip.className = "chip" + (owned ? " active" : "");
     chip.innerHTML = `
-      <div class="chip-swatch avatar-shell has-deco ${deco.css}" style="width:34px;height:34px;"><div class="avatar-inner" style="font-size:14px;">🙂</div></div>
-      <div class="chip-label">${deco.label}</div>
+      ${decoSwatchHtml(deco)}
+      <div class="chip-label">${escapeHtml(deco.label || deco.name)}</div>
       <div class="chip-sub">${owned ? "✅ Possédée" : "Donner"}</div>
     `;
     chip.onclick = async () => {
@@ -391,18 +568,18 @@ function buildOrganizerManagePanel(targetUid, targetProfile) {
 
   const themeLabel = document.createElement("div");
   themeLabel.className = "manage-grid-label";
-  themeLabel.textContent = "🏆 Thèmes Trophée à attribuer";
+  themeLabel.textContent = "🏆 Thèmes verrouillés à attribuer";
   wrap.appendChild(themeLabel);
 
   const themeGrid = document.createElement("div");
   themeGrid.className = "chip-grid";
-  THEMES.filter((t) => t.locked).forEach((theme) => {
+  getAllThemes().filter((t) => t.locked).forEach((theme) => {
     const owned = (targetProfile.theme?.owned || []).includes(theme.id);
     const chip = document.createElement("div");
     chip.className = "chip" + (owned ? " active" : "");
     chip.innerHTML = `
-      <div class="chip-swatch theme-swatch-${theme.id}"></div>
-      <div class="chip-label">${theme.label}</div>
+      ${themeSwatchHtml(theme)}
+      <div class="chip-label">${escapeHtml(theme.label || theme.name)}</div>
       <div class="chip-sub">${owned ? "✅ Possédé" : "Donner"}</div>
     `;
     chip.onclick = async () => {
@@ -421,7 +598,287 @@ function buildOrganizerManagePanel(targetUid, targetProfile) {
   });
   wrap.appendChild(themeGrid);
 
+  const tagLabel = document.createElement("div");
+  tagLabel.className = "manage-grid-label";
+  tagLabel.textContent = "🏷️ Tags à attribuer";
+  wrap.appendChild(tagLabel);
+
+  const tagGrid = document.createElement("div");
+  tagGrid.className = "chip-grid";
+  const grantableTags = getAllTags().filter((t) => !t.defaultOwned);
+  if (!grantableTags.length) {
+    const p = document.createElement("p");
+    p.className = "settings-note";
+    p.textContent = "Aucun tag à attribuer pour l'instant (crée-en dans « Espace organisateur » plus bas).";
+    wrap.appendChild(p);
+  } else {
+    grantableTags.forEach((tag) => {
+      const owned = (targetProfile.tags?.owned || []).includes(tag.id);
+      const chip = document.createElement("div");
+      chip.className = "chip" + (owned ? " active" : "");
+      chip.innerHTML = `
+        <div class="chip-swatch" style="background:${tag.color};"></div>
+        <div class="chip-label">${escapeHtml(tag.name)}</div>
+        <div class="chip-sub">${owned ? "✅ Possédé" : "Donner"}</div>
+      `;
+      chip.onclick = async () => {
+        try {
+          await updateDoc(doc(db, "users", targetUid), {
+            "tags.owned": owned ? arrayRemove(tag.id) : arrayUnion(tag.id),
+          });
+          const snap = await getDoc(doc(db, "users", targetUid));
+          renderPlayerCard(targetUid, snap.data());
+          showToast(owned ? "Tag retiré." : "Tag attribué !");
+        } catch (err) {
+          showToast(friendlyError(err), true);
+        }
+      };
+      tagGrid.appendChild(chip);
+    });
+    wrap.appendChild(tagGrid);
+  }
+
   return wrap;
+}
+
+// ---------------------------------------------------------------------------
+// Espace organisateur — création / modification des catalogues (décorations,
+// thèmes, tags). Les règles Firestore revérifient toujours le rôle : ce code
+// ne fait que préparer les écritures, jamais leur faire confiance seul.
+// ---------------------------------------------------------------------------
+let editingDecoId = null;
+let editingDecoCurrent = null; // { imageDataUrl, type } de la décoration en cours de modification
+let editingThemeId = null;
+let editingTagId = null;
+
+function renderOrganizerCatalogPanel() {
+  const section = $("#section-organizer-catalog");
+  if (!section) return;
+  const isOrg = getCurrentProfile()?.role === "organisateur";
+  section.style.display = isOrg ? "" : "none";
+  if (!isOrg) return;
+  renderDecoManageList();
+  renderThemeManageList();
+  renderTagManageList();
+}
+
+function renderDecoManageList() {
+  const list = $("#admin-deco-list");
+  if (!list) return;
+  const custom = getAllDecorations().filter((d) => !d.builtin);
+  list.innerHTML = custom.length ? "" : `<p class="settings-note">Aucune décoration créée pour l'instant.</p>`;
+  custom.forEach((deco) => {
+    const chip = document.createElement("div");
+    chip.className = "chip" + (editingDecoId === deco.id ? " active" : "");
+    chip.innerHTML = `
+      ${decoSwatchHtml(deco)}
+      <div class="chip-label">${escapeHtml(deco.name)}</div>
+      <div class="chip-sub">${deco.type === "animated" ? "🎞️ Animée" : "Statique"} · Modifier</div>
+    `;
+    chip.onclick = () => startEditDeco(deco);
+    list.appendChild(chip);
+  });
+}
+
+function startEditDeco(deco) {
+  editingDecoId = deco.id;
+  editingDecoCurrent = { imageDataUrl: deco.imageDataUrl, type: deco.type };
+  $("#admin-deco-name").value = deco.name;
+  $("#admin-deco-type").value = deco.type;
+  $("#admin-deco-file").value = "";
+  $("#admin-deco-submit").textContent = "Enregistrer les modifications";
+  $("#admin-deco-cancel").style.display = "";
+  renderDecoManageList();
+  $("#form-admin-deco")?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+function cancelEditDeco() {
+  editingDecoId = null;
+  editingDecoCurrent = null;
+  $("#form-admin-deco")?.reset();
+  $("#admin-deco-submit").textContent = "Créer la décoration";
+  $("#admin-deco-cancel").style.display = "none";
+  renderDecoManageList();
+}
+
+async function handleAdminDecoSubmit(e) {
+  e.preventDefault();
+  const name = $("#admin-deco-name").value.trim();
+  const type = $("#admin-deco-type").value;
+  const file = $("#admin-deco-file").files?.[0];
+  if (!name) {
+    showToast("Donne un nom à la décoration.", true);
+    return;
+  }
+  let imageDataUrl = editingDecoId ? editingDecoCurrent?.imageDataUrl || null : null;
+  if (file) {
+    try {
+      if (type === "animated") {
+        if (file.size > MAX_ANIMATED_DECO_BYTES) {
+          showToast("Ce fichier est trop lourd (environ 900 Ko max) — choisis un gif plus léger.", true);
+          return;
+        }
+        imageDataUrl = await fileToRawDataUrl(file);
+      } else {
+        imageDataUrl = await compressStaticDecoImage(file);
+      }
+    } catch (err) {
+      showToast("Impossible de lire ce fichier.", true);
+      return;
+    }
+  }
+  if (!imageDataUrl) {
+    showToast("Choisis une image pour cette décoration.", true);
+    return;
+  }
+  try {
+    if (editingDecoId) {
+      await updateDecoration(editingDecoId, { name, type, imageDataUrl });
+      showToast("Décoration modifiée !");
+    } else {
+      await createDecoration({ name, type, imageDataUrl });
+      showToast("Décoration créée !");
+    }
+    cancelEditDeco();
+  } catch (err) {
+    showToast(friendlyError(err), true);
+  }
+}
+
+const THEME_COLOR_DEFAULTS = {
+  bg: "#0f1117", bg2: "#161a24", panel: "#1b202c", panelBorder: "#2a3142",
+  accent: "#8b5cf6", accent2: "#f5b942", text: "#eef0f5", muted: "#93a0b8",
+};
+function themeColorFieldIds() {
+  return {
+    bg: "#admin-theme-bg", bg2: "#admin-theme-bg2", panel: "#admin-theme-panel",
+    panelBorder: "#admin-theme-panelborder", accent: "#admin-theme-accent",
+    accent2: "#admin-theme-accent2", text: "#admin-theme-text", muted: "#admin-theme-muted",
+  };
+}
+
+function renderThemeManageList() {
+  const list = $("#admin-theme-list");
+  if (!list) return;
+  const custom = getAllThemes().filter((t) => !t.builtin);
+  list.innerHTML = custom.length ? "" : `<p class="settings-note">Aucun thème personnalisé créé pour l'instant.</p>`;
+  custom.forEach((theme) => {
+    const chip = document.createElement("div");
+    chip.className = "chip" + (editingThemeId === theme.id ? " active" : "");
+    chip.innerHTML = `
+      ${themeSwatchHtml(theme)}
+      <div class="chip-label">${escapeHtml(theme.name)}</div>
+      <div class="chip-sub">Modifier</div>
+    `;
+    chip.onclick = () => startEditTheme(theme);
+    list.appendChild(chip);
+  });
+}
+
+function startEditTheme(theme) {
+  editingThemeId = theme.id;
+  $("#admin-theme-name").value = theme.name;
+  const fields = themeColorFieldIds();
+  const c = theme.colors || {};
+  Object.keys(fields).forEach((key) => {
+    $(fields[key]).value = c[key] || THEME_COLOR_DEFAULTS[key];
+  });
+  $("#admin-theme-submit").textContent = "Enregistrer les modifications";
+  $("#admin-theme-cancel").style.display = "";
+  renderThemeManageList();
+  $("#form-admin-theme")?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+function cancelEditTheme() {
+  editingThemeId = null;
+  $("#form-admin-theme")?.reset();
+  const fields = themeColorFieldIds();
+  Object.keys(fields).forEach((key) => ($(fields[key]).value = THEME_COLOR_DEFAULTS[key]));
+  $("#admin-theme-submit").textContent = "Créer le thème";
+  $("#admin-theme-cancel").style.display = "none";
+  renderThemeManageList();
+}
+
+async function handleAdminThemeSubmit(e) {
+  e.preventDefault();
+  const name = $("#admin-theme-name").value.trim();
+  if (!name) {
+    showToast("Donne un nom au thème.", true);
+    return;
+  }
+  const fields = themeColorFieldIds();
+  const colors = {};
+  Object.keys(fields).forEach((key) => (colors[key] = $(fields[key]).value));
+  try {
+    if (editingThemeId) {
+      await updateTheme(editingThemeId, { name, colors });
+      showToast("Thème modifié !");
+    } else {
+      await createTheme({ name, colors });
+      showToast("Thème créé !");
+    }
+    cancelEditTheme();
+  } catch (err) {
+    showToast(friendlyError(err), true);
+  }
+}
+
+function renderTagManageList() {
+  const list = $("#admin-tag-list");
+  if (!list) return;
+  const tags = getAllTags();
+  list.innerHTML = tags.length ? "" : `<p class="settings-note">Aucun tag créé pour l'instant.</p>`;
+  tags.forEach((tag) => {
+    const chip = document.createElement("div");
+    chip.className = "chip" + (editingTagId === tag.id ? " active" : "");
+    chip.innerHTML = `
+      <div class="chip-swatch" style="background:${tag.color};"></div>
+      <div class="chip-label">${escapeHtml(tag.name)}</div>
+      <div class="chip-sub">${tag.defaultOwned ? "Par défaut · " : ""}Modifier</div>
+    `;
+    chip.onclick = () => startEditTag(tag);
+    list.appendChild(chip);
+  });
+}
+
+function startEditTag(tag) {
+  editingTagId = tag.id;
+  $("#admin-tag-name").value = tag.name;
+  $("#admin-tag-color").value = tag.color;
+  $("#admin-tag-default").checked = !!tag.defaultOwned;
+  $("#admin-tag-submit").textContent = "Enregistrer les modifications";
+  $("#admin-tag-cancel").style.display = "";
+  renderTagManageList();
+  $("#form-admin-tag")?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+function cancelEditTag() {
+  editingTagId = null;
+  $("#form-admin-tag")?.reset();
+  $("#admin-tag-color").value = "#8b5cf6";
+  $("#admin-tag-submit").textContent = "Créer le tag";
+  $("#admin-tag-cancel").style.display = "none";
+  renderTagManageList();
+}
+
+async function handleAdminTagSubmit(e) {
+  e.preventDefault();
+  const name = $("#admin-tag-name").value.trim();
+  const color = $("#admin-tag-color").value;
+  const defaultOwned = $("#admin-tag-default").checked;
+  if (!name) {
+    showToast("Donne un nom au tag.", true);
+    return;
+  }
+  try {
+    if (editingTagId) {
+      await updateTag(editingTagId, { name, color, defaultOwned });
+      showToast("Tag modifié !");
+    } else {
+      await createTag({ name, color, defaultOwned });
+      showToast("Tag créé !");
+    }
+    cancelEditTag();
+  } catch (err) {
+    showToast(friendlyError(err), true);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -500,10 +957,42 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#form-change-password").addEventListener("submit", handleChangePassword);
 
   $("#settings-photo-input").addEventListener("change", handlePhotoChosen);
+  $("#btn-recrop-photo").addEventListener("click", handleRecropExisting);
   $("#btn-save-photo").addEventListener("click", handleSavePhoto);
   $("#btn-remove-photo").addEventListener("click", handleRemovePhoto);
+  ["#photo-zoom", "#photo-pan-x", "#photo-pan-y"].forEach((sel) => {
+    $(sel).addEventListener("input", updateCropperTransform);
+  });
 
   $("#form-search-player").addEventListener("submit", handleSearchPlayer);
+
+  $("#form-admin-deco")?.addEventListener("submit", handleAdminDecoSubmit);
+  $("#admin-deco-cancel")?.addEventListener("click", cancelEditDeco);
+  $("#form-admin-theme")?.addEventListener("submit", handleAdminThemeSubmit);
+  $("#admin-theme-cancel")?.addEventListener("click", cancelEditTheme);
+  $("#form-admin-tag")?.addEventListener("submit", handleAdminTagSubmit);
+  $("#admin-tag-cancel")?.addEventListener("click", cancelEditTag);
+
+  // Les catalogues (décorations/thèmes/tags) peuvent changer pendant que
+  // l'écran Paramètres est ouvert (une création vient de l'organisateur
+  // lui-même, ou d'un autre appareil) : on rafraîchit les grilles concernées
+  // à chaque mise à jour, uniquement si cet écran est bien affiché.
+  document.addEventListener("cartech:catalogs", () => {
+    if (!$("#view-settings")?.classList.contains("active")) return;
+    const profile = getCurrentProfile();
+    if (!profile) return;
+    renderDecorationsGrid(profile);
+    renderThemesGrid(profile);
+    renderTagsGrid(profile);
+    renderOrganizerCatalogPanel();
+  });
+
+  // Ouvert depuis la fenêtre "Voir le profil" quand l'organisateur clique
+  // sur "Gérer ce joueur →" (voir app.js) : bascule vers l'écran Paramètres,
+  // recherche déjà faite.
+  document.addEventListener("cartech:manage-player", (e) => {
+    if (e.detail?.uid) showPlayerProfileScreen(e.detail.uid);
+  });
 
   $("#btn-delete-account").addEventListener("click", openDeleteStep1);
   $("#btn-delete-cancel-1").addEventListener("click", () => closeModal("overlay-delete-step1"));
