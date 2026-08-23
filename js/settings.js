@@ -38,16 +38,23 @@ import {
   applyThemeLive,
   contrastTextColor,
   compressStaticDecoImage,
+  compressThemeBgImage,
   fileToRawDataUrl,
   MAX_ANIMATED_DECO_BYTES,
+  MAX_THEME_BG_BYTES,
   createDecoration,
   updateDecoration,
+  deleteDecoration,
   createTheme,
   updateTheme,
+  deleteTheme,
   createTag,
   updateTag,
+  deleteTag,
   getAllGames,
   createGame,
+  downloadDecorationTemplate,
+  downloadThemeBgTemplate,
 } from "./live-catalog.js";
 
 const MAX_PHOTO_BYTES = 700_000; // marge de sécurité sous la limite de 1 Mo par document Firestore
@@ -323,7 +330,13 @@ function renderDecorationsGrid(profile) {
   noneChip.onclick = () => setActiveDecoration(null);
   grid.appendChild(noneChip);
 
-  getAllDecorations().forEach((deco) => {
+  // Catalogue publié + (au cas où) toute décoration déjà possédée même si
+  // l'organisateur l'a dépubliée depuis — pour ne jamais faire "disparaître"
+  // une décoration qu'un joueur possède déjà de son propre choix.
+  const visible = getAllDecorations({ includeUnpublished: true }).filter(
+    (d) => d.builtin || d.published || owned.includes(d.id)
+  );
+  visible.forEach((deco) => {
     const isOwned = owned.includes(deco.id);
     const chip = document.createElement("div");
     chip.className = "chip" + (!isOwned ? " locked" : "") + (active === deco.id ? " active" : "");
@@ -542,7 +555,10 @@ function buildOrganizerManagePanel(targetUid, targetProfile) {
 
   const decoGrid = document.createElement("div");
   decoGrid.className = "chip-grid";
-  getAllDecorations().forEach((deco) => {
+  // L'organisateur voit toutes ses décorations ici (même non publiées) : il
+  // peut vouloir attribuer une décoration en avant-première avant de la
+  // publier pour tout le monde.
+  getAllDecorations({ includeUnpublished: true }).forEach((deco) => {
     const owned = (targetProfile.decorations?.owned || []).includes(deco.id);
     const chip = document.createElement("div");
     chip.className = "chip" + (owned ? " active" : "");
@@ -674,6 +690,7 @@ function buildOrganizerManagePanel(targetUid, targetProfile) {
 let editingDecoId = null;
 let editingDecoCurrent = null; // { imageDataUrl, type } de la décoration en cours de modification
 let editingThemeId = null;
+let editingThemeBgDataUrl = null; // image de fond en cours (déjà enregistrée ou tout juste importée), ou null
 let editingTagId = null;
 
 function renderOrganizerCatalogPanel() {
@@ -691,18 +708,59 @@ function renderOrganizerCatalogPanel() {
 function renderDecoManageList() {
   const list = $("#admin-deco-list");
   if (!list) return;
-  const custom = getAllDecorations().filter((d) => !d.builtin);
+  const custom = getAllDecorations({ includeUnpublished: true }).filter((d) => !d.builtin);
   list.innerHTML = custom.length ? "" : `<p class="settings-note">Aucune décoration créée pour l'instant.</p>`;
   custom.forEach((deco) => {
+    const row = document.createElement("div");
+    row.className = "admin-manage-row";
+
     const chip = document.createElement("div");
     chip.className = "chip" + (editingDecoId === deco.id ? " active" : "");
     chip.innerHTML = `
       ${decoSwatchHtml(deco)}
       <div class="chip-label">${escapeHtml(deco.name)}</div>
-      <div class="chip-sub">${deco.type === "animated" ? "🎞️ Animée" : "Statique"} · Modifier</div>
+      <div class="chip-sub">${deco.type === "animated" ? "🎞️ Animée" : "Statique"} · ${deco.published ? "✅ Publiée" : "🔒 Non publiée"} · Modifier</div>
     `;
     chip.onclick = () => startEditDeco(deco);
-    list.appendChild(chip);
+    row.appendChild(chip);
+
+    const actions = document.createElement("div");
+    actions.className = "admin-manage-actions";
+
+    const publishBtn = document.createElement("button");
+    publishBtn.type = "button";
+    publishBtn.className = "btn-small";
+    publishBtn.textContent = deco.published ? "Dépublier" : "Publier";
+    publishBtn.onclick = async (e) => {
+      e.stopPropagation();
+      try {
+        await updateDecoration(deco.id, { published: !deco.published });
+        showToast(deco.published ? "Décoration dépubliée (visible uniquement par toi)." : "Décoration publiée pour tout le monde !");
+      } catch (err) {
+        showToast(friendlyError(err), true);
+      }
+    };
+    actions.appendChild(publishBtn);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "btn-small btn-danger";
+    deleteBtn.textContent = "Supprimer";
+    deleteBtn.onclick = async (e) => {
+      e.stopPropagation();
+      if (!confirm(`Supprimer définitivement la décoration « ${deco.name} » ?`)) return;
+      try {
+        await deleteDecoration(deco.id);
+        if (editingDecoId === deco.id) cancelEditDeco();
+        showToast("Décoration supprimée.");
+      } catch (err) {
+        showToast(friendlyError(err), true);
+      }
+    };
+    actions.appendChild(deleteBtn);
+
+    row.appendChild(actions);
+    list.appendChild(row);
   });
 }
 
@@ -788,16 +846,76 @@ function renderThemeManageList() {
   const custom = getAllThemes().filter((t) => !t.builtin);
   list.innerHTML = custom.length ? "" : `<p class="settings-note">Aucun thème personnalisé créé pour l'instant.</p>`;
   custom.forEach((theme) => {
+    const row = document.createElement("div");
+    row.className = "admin-manage-row";
+
     const chip = document.createElement("div");
     chip.className = "chip" + (editingThemeId === theme.id ? " active" : "");
     chip.innerHTML = `
       ${themeSwatchHtml(theme)}
       <div class="chip-label">${escapeHtml(theme.name)}</div>
-      <div class="chip-sub">Modifier</div>
+      <div class="chip-sub">${theme.bgImageDataUrl ? "🖼️ Fond perso · " : ""}Modifier</div>
     `;
     chip.onclick = () => startEditTheme(theme);
-    list.appendChild(chip);
+    row.appendChild(chip);
+
+    const actions = document.createElement("div");
+    actions.className = "admin-manage-actions";
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "btn-small btn-danger";
+    deleteBtn.textContent = "Supprimer";
+    deleteBtn.onclick = async (e) => {
+      e.stopPropagation();
+      if (!confirm(`Supprimer définitivement le thème « ${theme.name} » ?`)) return;
+      try {
+        await deleteTheme(theme.id);
+        if (editingThemeId === theme.id) cancelEditTheme();
+        showToast("Thème supprimé.");
+      } catch (err) {
+        showToast(friendlyError(err), true);
+      }
+    };
+    actions.appendChild(deleteBtn);
+    row.appendChild(actions);
+    list.appendChild(row);
   });
+}
+
+function updateThemeBgPreview() {
+  const preview = $("#admin-theme-bg-preview");
+  const removeBtn = $("#admin-theme-bg-remove");
+  if (!preview) return;
+  if (editingThemeBgDataUrl) {
+    preview.src = editingThemeBgDataUrl;
+    preview.style.display = "";
+    if (removeBtn) removeBtn.style.display = "";
+  } else {
+    preview.removeAttribute("src");
+    preview.style.display = "none";
+    if (removeBtn) removeBtn.style.display = "none";
+  }
+}
+
+async function handleThemeBgFileChosen(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  if (file.size > 8_000_000) {
+    showToast("Cette image est trop lourde à importer (8 Mo max avant compression).", true);
+    return;
+  }
+  try {
+    editingThemeBgDataUrl = await compressThemeBgImage(file);
+    updateThemeBgPreview();
+  } catch (err) {
+    showToast("Impossible de lire cette image.", true);
+  }
+}
+
+function handleThemeBgRemove() {
+  editingThemeBgDataUrl = null;
+  $("#admin-theme-bg-file").value = "";
+  updateThemeBgPreview();
 }
 
 function startEditTheme(theme) {
@@ -808,6 +926,9 @@ function startEditTheme(theme) {
   Object.keys(fields).forEach((key) => {
     $(fields[key]).value = c[key] || THEME_COLOR_DEFAULTS[key];
   });
+  editingThemeBgDataUrl = theme.bgImageDataUrl || null;
+  $("#admin-theme-bg-file").value = "";
+  updateThemeBgPreview();
   $("#admin-theme-submit").textContent = "Enregistrer les modifications";
   $("#admin-theme-cancel").style.display = "";
   renderThemeManageList();
@@ -818,6 +939,8 @@ function cancelEditTheme() {
   $("#form-admin-theme")?.reset();
   const fields = themeColorFieldIds();
   Object.keys(fields).forEach((key) => ($(fields[key]).value = THEME_COLOR_DEFAULTS[key]));
+  editingThemeBgDataUrl = null;
+  updateThemeBgPreview();
   $("#admin-theme-submit").textContent = "Créer le thème";
   $("#admin-theme-cancel").style.display = "none";
   renderThemeManageList();
@@ -835,10 +958,10 @@ async function handleAdminThemeSubmit(e) {
   Object.keys(fields).forEach((key) => (colors[key] = $(fields[key]).value));
   try {
     if (editingThemeId) {
-      await updateTheme(editingThemeId, { name, colors });
+      await updateTheme(editingThemeId, { name, colors, bgImageDataUrl: editingThemeBgDataUrl || null });
       showToast("Thème modifié !");
     } else {
-      await createTheme({ name, colors });
+      await createTheme({ name, colors, bgImageDataUrl: editingThemeBgDataUrl || null });
       showToast("Thème créé !");
     }
     cancelEditTheme();
@@ -853,6 +976,9 @@ function renderTagManageList() {
   const tags = getAllTags();
   list.innerHTML = tags.length ? "" : `<p class="settings-note">Aucun tag créé pour l'instant.</p>`;
   tags.forEach((tag) => {
+    const row = document.createElement("div");
+    row.className = "admin-manage-row";
+
     const chip = document.createElement("div");
     chip.className = "chip" + (editingTagId === tag.id ? " active" : "");
     chip.innerHTML = `
@@ -861,7 +987,28 @@ function renderTagManageList() {
       <div class="chip-sub">${tag.defaultOwned ? "Par défaut · " : ""}Modifier</div>
     `;
     chip.onclick = () => startEditTag(tag);
-    list.appendChild(chip);
+    row.appendChild(chip);
+
+    const actions = document.createElement("div");
+    actions.className = "admin-manage-actions";
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "btn-small btn-danger";
+    deleteBtn.textContent = "Supprimer";
+    deleteBtn.onclick = async (e) => {
+      e.stopPropagation();
+      if (!confirm(`Supprimer définitivement le tag « ${tag.name} » ?`)) return;
+      try {
+        await deleteTag(tag.id);
+        if (editingTagId === tag.id) cancelEditTag();
+        showToast("Tag supprimé.");
+      } catch (err) {
+        showToast(friendlyError(err), true);
+      }
+    };
+    actions.appendChild(deleteBtn);
+    row.appendChild(actions);
+    list.appendChild(row);
   });
 }
 
@@ -1029,8 +1176,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   $("#form-admin-deco")?.addEventListener("submit", handleAdminDecoSubmit);
   $("#admin-deco-cancel")?.addEventListener("click", cancelEditDeco);
+  $("#btn-download-deco-template")?.addEventListener("click", downloadDecorationTemplate);
   $("#form-admin-theme")?.addEventListener("submit", handleAdminThemeSubmit);
   $("#admin-theme-cancel")?.addEventListener("click", cancelEditTheme);
+  $("#admin-theme-bg-file")?.addEventListener("change", handleThemeBgFileChosen);
+  $("#admin-theme-bg-remove")?.addEventListener("click", handleThemeBgRemove);
+  $("#btn-download-theme-bg-template")?.addEventListener("click", downloadThemeBgTemplate);
   $("#form-admin-tag")?.addEventListener("submit", handleAdminTagSubmit);
   $("#admin-tag-cancel")?.addEventListener("click", cancelEditTag);
   $("#form-admin-game")?.addEventListener("submit", handleAdminGameSubmit);

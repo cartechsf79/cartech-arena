@@ -13,6 +13,7 @@ import {
   doc,
   addDoc,
   updateDoc,
+  deleteDoc,
   collection,
   onSnapshot,
   serverTimestamp,
@@ -38,6 +39,10 @@ let listeners = [];
 // client sans perdre l'animation) — marge de sécurité sous 1 Mo/document.
 export const MAX_STATIC_DECO_BYTES = 350_000;
 export const MAX_ANIMATED_DECO_BYTES = 900_000;
+// Image de fond de thème : plus grande (pleine page), donc marge un peu plus
+// large que les décorations mais toujours bien sous la limite de 1 Mo par
+// document Firestore.
+export const MAX_THEME_BG_BYTES = 700_000;
 
 // ---------------------------------------------------------------------------
 // Écoute temps réel — démarrée une seule fois après connexion (voir app.js)
@@ -88,9 +93,18 @@ export function stopLiveCatalogs() {
 // ---------------------------------------------------------------------------
 // Listes fusionnées (catalogue de base + créations de l'organisateur)
 // ---------------------------------------------------------------------------
-export function getAllDecorations() {
+// Une décoration créée par l'organisateur démarre "non publiée" (visible
+// seulement dans l'Espace organisateur, pour la préparer tranquillement) et
+// doit être explicitement "Publiée" pour apparaître à tout le monde (comme
+// décoration verrouillée, à attribuer) — voir buildOrganizerManagePanel et
+// renderDecoManageList dans settings.js. Par défaut, getAllDecorations()
+// masque donc les décorations non publiées ; passer includeUnpublished:true
+// uniquement pour l'affichage de gestion réservé à l'organisateur.
+export function getAllDecorations({ includeUnpublished = false } = {}) {
   const builtins = DECORATIONS.map((d) => ({ ...d, builtin: true, type: "static" }));
-  const custom = liveDecorations.map((d) => ({ ...d, builtin: false }));
+  const custom = liveDecorations
+    .filter((d) => includeUnpublished || d.published)
+    .map((d) => ({ ...d, builtin: false }));
   return [...builtins, ...custom];
 }
 export function getAllThemes() {
@@ -108,8 +122,14 @@ export function getAllGames() {
   return [...GAMES, ...liveGames.map((g) => g.name)];
 }
 
+// Toujours résoudre la décoration même si elle n'est plus publiée : sinon un
+// joueur qui a une décoration active au moment où l'organisateur la
+// dépublie la verrait disparaître de son avatar sans raison. Seul le
+// catalogue de CHOIX (renderDecorationsGrid, panel d'attribution) doit
+// respecter includeUnpublished:false — l'affichage, lui, doit toujours
+// pouvoir retrouver une décoration déjà attribuée/active.
 export function findAnyDecoration(id) {
-  return getAllDecorations().find((d) => d.id === id) || null;
+  return getAllDecorations({ includeUnpublished: true }).find((d) => d.id === id) || null;
 }
 export function findAnyTheme(id) {
   return getAllThemes().find((t) => t.id === id) || null;
@@ -186,6 +206,23 @@ export function applyThemeLive(themeId) {
     document.body.style.removeProperty("--accent-grad");
     document.body.style.removeProperty("background");
   }
+
+  // Image de fond personnalisée (facultative, en plus des couleurs) : on
+  // efface toujours d'abord (même logique défensive que les variables CSS
+  // ci-dessus) puis on la réapplique par-dessus le dégradé de couleurs si le
+  // thème en a une.
+  document.body.style.removeProperty("background-image");
+  document.body.style.removeProperty("background-size");
+  document.body.style.removeProperty("background-position");
+  document.body.style.removeProperty("background-repeat");
+  document.body.style.removeProperty("background-attachment");
+  if (custom?.bgImageDataUrl) {
+    document.body.style.backgroundImage = `url("${custom.bgImageDataUrl}")`;
+    document.body.style.backgroundSize = "cover";
+    document.body.style.backgroundPosition = "center";
+    document.body.style.backgroundRepeat = "no-repeat";
+    document.body.style.backgroundAttachment = "fixed";
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -221,6 +258,28 @@ export async function compressStaticDecoImage(file) {
   return dataUrl;
 }
 
+// Compression d'une image de fond de thème (JPEG, pas de transparence
+// nécessaire ici) : on réduit la plus grande dimension par paliers jusqu'à
+// passer sous MAX_THEME_BG_BYTES.
+export async function compressThemeBgImage(file) {
+  const img = await fileToImage(file);
+  let side = 1600;
+  let dataUrl = "";
+  do {
+    const canvas = document.createElement("canvas");
+    const ratio = Math.min(1, side / Math.max(img.width, img.height));
+    canvas.width = Math.round(img.width * ratio);
+    canvas.height = Math.round(img.height * ratio);
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+    side -= 150;
+  } while (dataUrl.length > MAX_THEME_BG_BYTES && side > 150);
+  return dataUrl;
+}
+
 export function fileToRawDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -228,6 +287,101 @@ export function fileToRawDataUrl(file) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Gabarits téléchargeables — pour préparer une image de décoration ou de
+// fond de thème dans un logiciel externe (Photoshop, GIMP, Canva...) avec
+// les bonnes proportions dès le départ, puis l'importer directement.
+// ---------------------------------------------------------------------------
+function triggerDownload(dataUrl, filename) {
+  const a = document.createElement("a");
+  a.href = dataUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+// La décoration s'affiche à 136% de la taille de l'avatar (voir
+// .avatar-deco-overlay dans style.css : inset -18%, width/height 136%), donc
+// la photo de profil occupe le carré central de 100/136 ≈ 73,53% de l'image
+// de décoration. Le gabarit dessine ce carré en pointillés pour que
+// l'organisateur sache exactement où positionner/laisser transparent
+// l'emplacement de la photo.
+export function downloadDecorationTemplate() {
+  const SIZE = 1024;
+  const PHOTO_RATIO = 100 / 136;
+  const canvas = document.createElement("canvas");
+  canvas.width = SIZE;
+  canvas.height = SIZE;
+  const ctx = canvas.getContext("2d");
+
+  // Fond transparent avec damier léger pour bien visualiser la zone
+  // transparente une fois exporté en PNG (le damier n'est qu'un repère
+  // visuel dans le gabarit, pas dans l'image finale).
+  const cell = 32;
+  for (let y = 0; y < SIZE; y += cell) {
+    for (let x = 0; x < SIZE; x += cell) {
+      ctx.fillStyle = (x / cell + y / cell) % 2 === 0 ? "#f0f0f0" : "#ffffff";
+      ctx.fillRect(x, y, cell, cell);
+    }
+  }
+
+  const photoSize = Math.round(SIZE * PHOTO_RATIO);
+  const offset = Math.round((SIZE - photoSize) / 2);
+
+  ctx.save();
+  ctx.strokeStyle = "#ff2d55";
+  ctx.lineWidth = 4;
+  ctx.setLineDash([16, 12]);
+  ctx.strokeRect(offset, offset, photoSize, photoSize);
+  ctx.restore();
+
+  ctx.fillStyle = "#ff2d55";
+  ctx.font = "bold 26px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("Photo de profil (zone cachée par la déco)", SIZE / 2, offset - 20);
+  ctx.font = "20px sans-serif";
+  ctx.fillText(`Image complète ${SIZE}×${SIZE} px — carré rouge = ${photoSize}×${photoSize} px`, SIZE / 2, SIZE - 16);
+
+  triggerDownload(canvas.toDataURL("image/png"), "gabarit-decoration-1024x1024.png");
+}
+
+// Gabarit pour le fond d'un thème personnalisé : image plein écran, on
+// marque une zone centrale "sûre" (contenu important pas caché derrière les
+// panneaux de l'interface qui restent semi-transparents au centre) sans
+// contrainte stricte comme pour la décoration.
+export function downloadThemeBgTemplate() {
+  const W = 1080;
+  const H = 1920;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+
+  ctx.fillStyle = "#14161c";
+  ctx.fillRect(0, 0, W, H);
+
+  const marginX = Math.round(W * 0.08);
+  const marginY = Math.round(H * 0.12);
+  ctx.save();
+  ctx.strokeStyle = "#5b8cff";
+  ctx.lineWidth = 4;
+  ctx.setLineDash([18, 14]);
+  ctx.strokeRect(marginX, marginY, W - marginX * 2, H - marginY * 2);
+  ctx.restore();
+
+  ctx.fillStyle = "#5b8cff";
+  ctx.textAlign = "center";
+  ctx.font = "bold 34px sans-serif";
+  ctx.fillText("Zone centrale = souvent recouverte par l'interface", W / 2, marginY - 24);
+  ctx.font = "26px sans-serif";
+  ctx.fillText("Privilégier les détails/couleurs vives sur les bords", W / 2, H - marginY + 46);
+  ctx.font = "22px sans-serif";
+  ctx.fillText(`Format conseillé : ${W}×${H} px (portrait)`, W / 2, H / 2);
+
+  triggerDownload(canvas.toDataURL("image/png"), "gabarit-fond-theme-1080x1920.png");
 }
 
 // ---------------------------------------------------------------------------
@@ -240,22 +394,33 @@ export async function createDecoration({ name, type, imageDataUrl }) {
     name: name.trim(),
     type,
     imageDataUrl,
+    // Non publiée par défaut : seul l'organisateur la voit (dans l'Espace
+    // organisateur), le temps de la préparer tranquillement. Voir le bouton
+    // "Publier" / "Dépublier" dans settings.js (renderDecoManageList).
+    published: false,
     createdAt: serverTimestamp(),
   });
 }
 export async function updateDecoration(id, patch) {
   await updateDoc(doc(decorationsCol, id), patch);
 }
+export async function deleteDecoration(id) {
+  await deleteDoc(doc(decorationsCol, id));
+}
 
-export async function createTheme({ name, colors }) {
+export async function createTheme({ name, colors, bgImageDataUrl }) {
   await addDoc(themesCol, {
     name: name.trim(),
     colors,
+    ...(bgImageDataUrl ? { bgImageDataUrl } : {}),
     createdAt: serverTimestamp(),
   });
 }
 export async function updateTheme(id, patch) {
   await updateDoc(doc(themesCol, id), patch);
+}
+export async function deleteTheme(id) {
+  await deleteDoc(doc(themesCol, id));
 }
 
 export async function createTag({ name, color, defaultOwned }) {
@@ -268,6 +433,9 @@ export async function createTag({ name, color, defaultOwned }) {
 }
 export async function updateTag(id, patch) {
   await updateDoc(doc(tagsCol, id), patch);
+}
+export async function deleteTag(id) {
+  await deleteDoc(doc(tagsCol, id));
 }
 
 // Jeux (TCG) : pas de modification une fois créés (comme les autres

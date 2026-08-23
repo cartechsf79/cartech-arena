@@ -184,26 +184,39 @@ service cloud.firestore {
     // disponibles pour le Duel du jour / l'Événement. Tout le monde peut les
     // lire (nécessaire pour afficher les décorations/thèmes/tags des autres
     // joueurs, et pour remplir les listes de jeux) ; seul l'organisateur les
-    // crée ou les modifie. Pas de suppression pour l'instant, pour ne jamais
-    // laisser un joueur/un match avec une référence vers un catalogue
-    // supprimé.
+    // crée, les modifie ou les supprime. Un joueur qui référence encore une
+    // décoration/un thème/un tag supprimé ne casse rien côté affichage
+    // (l'appli ignore silencieusement une référence introuvable) — les jeux
+    // restent non supprimables (déjà référencés par l'historique des
+    // matchs/événements).
     // ========================================================================
     match /decorations/{decoId} {
-      allow read: if request.auth != null;
+      // Une décoration "non publiée" (nouvelle, en préparation) n'est lisible
+      // que par l'organisateur — c'est la vraie garantie côté serveur que
+      // "seul moi peut la voir" avant publication, en plus du filtrage côté
+      // affichage (getAllDecorations() dans live-catalog.js). .get() avec
+      // valeur par défaut "true" pour rester lisible par tous sur d'anciens
+      // documents créés avant l'ajout de ce champ (jamais "published:false").
+      allow read: if request.auth != null
+        && (resource.data.get('published', true) == true || isOrganizer());
       allow create, update: if isOrganizer();
-      allow delete: if false;
+      // La suppression est permise (contrairement aux thèmes/tags plus bas,
+      // c'est symétrique) : un joueur qui a encore une décoration supprimée
+      // en "active" ne casse rien à l'affichage (voir renderAvatar en app.js,
+      // qui ignore silencieusement une décoration introuvable).
+      allow delete: if isOrganizer();
     }
 
     match /themes/{themeId} {
       allow read: if request.auth != null;
       allow create, update: if isOrganizer();
-      allow delete: if false;
+      allow delete: if isOrganizer();
     }
 
     match /tags/{tagId} {
       allow read: if request.auth != null;
       allow create, update: if isOrganizer();
-      allow delete: if false;
+      allow delete: if isOrganizer();
     }
 
     match /games/{gameId} {

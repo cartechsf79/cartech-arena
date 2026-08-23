@@ -1,24 +1,35 @@
-# Car'Tech Arena — v6.1
+# Car'Tech Arena — v7
 
-Cette version corrige **deux** bugs qui, ensemble, provoquaient le même
-symptôme sur certains comptes (décorations/thèmes/tags attribués qui
-refusaient de s'activer, "Action refusée (droits insuffisants)"), sépare
-l'espace organisateur des Paramètres standards dans son propre écran, et
-permet d'ajouter un nouveau jeu (TCG) directement depuis l'appli, sans
-avoir à me redemander de modifier le code.
+Cette version ajoute la **suppression** d'une décoration/d'un thème/d'un
+tag, un vrai flux **"non publié" → "Publier" → "Dépublier"** pour les
+décorations (tu prépares une décoration tranquillement, elle n'est visible
+que par toi, puis tu la rends visible pour tout le monde quand elle est
+prête — sans qu'elle soit débloquée automatiquement pour autant), des
+**gabarits téléchargeables** pour préparer une image de décoration ou de
+fond de thème dans ton logiciel d'image préféré avec les bonnes
+proportions dès le départ, et la possibilité d'ajouter une **image de
+fond** à un thème personnalisé, en plus de ses couleurs.
 
-**Si tu as déjà installé la v6 et que le souci persiste malgré la
-republication des règles** : c'est normal, il y avait un deuxième bug plus
-profond (voir "Corrigé dans cette version — bug n°2" plus bas), corrigé
-seulement dans cette v6.1. Republie les fichiers et les règles une nouvelle
-fois avec ce dossier.
+Elle confirme aussi deux points que tu avais signalés et qui, après
+vérification, fonctionnaient déjà correctement (voir plus bas pourquoi) :
+le changement de mot de passe est bien accessible à tous les comptes (pas
+seulement organisateur), et un joueur qui quitte le Duel du jour disparaît
+bien de la liste "Disponible" sur l'écran d'accueil.
 
-Elle inclut toujours tout ce qui a été ajouté en v5 : décorations de photo
-(statiques ou animées), thèmes de couleurs, tags — tous créables et
-modifiables par toi directement depuis l'appli — un recadrage de photo
-digne d'une vraie appli (zoom + position), et une **liste des joueurs** sur
-l'écran d'accueil qui montre en direct qui est disponible en boutique, en
-duel, ou pas là.
+**Republication des règles Firestore obligatoire pour cette version**
+(voir "Mise à jour" ci-dessous) : une décoration nouvellement créée n'est
+désormais lisible que par toi tant qu'elle n'est pas publiée, et cette
+garantie est appliquée aussi côté serveur (règles Firestore), pas
+seulement dans l'affichage.
+
+Elle inclut toujours tout ce qui a été ajouté dans les versions
+précédentes : décorations de photo (statiques ou animées), thèmes de
+couleurs, tags — tous créables et modifiables par toi directement depuis
+l'appli — un recadrage de photo digne d'une vraie appli (zoom + position),
+une **liste des joueurs** sur l'écran d'accueil qui montre en direct qui
+est disponible en boutique, en duel, ou pas là, le Duel du jour,
+l'Événement, l'Espace organisateur séparé des Paramètres standards, et
+l'ajout d'un jeu (TCG) directement depuis l'appli.
 
 ## Comment ça marche
 
@@ -47,7 +58,7 @@ sous forme d'image compressée (recadrée en 512×512 et convertie en JPEG
 léger). Ça reste largement dans le 1 Go gratuit de Firestore et ça évite
 d'avoir à activer un mode payant.
 
-## Mise à jour depuis la v5 ou la v6 — à faire une seule fois
+## Mise à jour depuis une version précédente — à faire une seule fois
 
 1. **Republie les fichiers** : sur ton dépôt GitHub (le bon projet — celui
    lié à ton domaine `car-tech-arena.vercel.app`), remplace tous les
@@ -55,16 +66,15 @@ d'avoir à activer un mode payant.
    changes"). `js/firebase-config.js` contient déjà tes vraies clés et ton
    email organisateur, pas besoin d'y retoucher.
 
-2. **Republie les règles Firestore — cette étape est indispensable pour les
-   deux correctifs de cette version** : Firebase Console > Firestore
-   Database > onglet "Règles" > remplace tout le contenu par celui de
-   `firestore.rules` > "Publier". Vérifie bien qu'il n'y a **pas de message
-   d'erreur en rouge** après avoir cliqué sur "Publier", et qu'un indicateur
-   du style "Dernière publication : à l'instant" apparaît en haut — sinon
-   les anciennes règles restent actives et rien ne change côté site, même
-   si le code (JS/HTML) est à jour. Sans cette republication, les
-   décorations/thèmes/tags et le nouveau catalogue de jeux ne fonctionneront
-   pas (accès refusé par Firebase).
+2. **Republie les règles Firestore — cette étape est indispensable pour
+   cette version** (nouvelle règle de confidentialité des décorations non
+   publiées, en plus des règles de suppression) : Firebase Console >
+   Firestore Database > onglet "Règles" > remplace tout le contenu par
+   celui de `firestore.rules` > "Publier". Vérifie bien qu'il n'y a **pas
+   de message d'erreur en rouge** après avoir cliqué sur "Publier", et
+   qu'un indicateur du style "Dernière publication : à l'instant" apparaît
+   en haut — sinon les anciennes règles restent actives et rien ne change
+   côté site, même si le code (JS/HTML) est à jour.
 
 3. Vercel redéploiera automatiquement dès que GitHub reçoit les nouveaux
    fichiers.
@@ -240,6 +250,73 @@ l'Événement, pour tout le monde. Les 3 jeux d'origine (Pokémon TCG,
 Lorcana, One Piece Card Game) restent toujours disponibles et ne peuvent
 pas être supprimés depuis l'appli.
 
+## Nouveau dans cette version — mot de passe et statut "Disponible", déjà vérifiés
+
+Tu avais signalé deux points ; après vérification (et un test automatisé
+dédié qui reproduit exactement le scénario), les deux fonctionnaient déjà
+correctement, sans changement de code nécessaire :
+
+- **Changement de mot de passe pour tout le monde** : dans Paramètres, la
+  section "Mot de passe" s'affiche pour **tout compte** créé avec un
+  email/mot de passe (organisateur ou joueur) — elle ne dépend que du mode
+  de connexion utilisé, pas du rôle. Elle est seulement masquée pour un
+  compte connecté via Google (pas de mot de passe à changer dans ce cas,
+  géré par Google).
+- **Un joueur qui quitte le Duel du jour disparaît bien de "Disponible"** :
+  dès qu'il clique sur "Quitter le duel du jour", son statut repasse à
+  "Inactif" sur l'écran d'accueil de tout le monde, en temps réel.
+
+Si le souci persiste chez toi malgré tout, ce n'est probablement pas un
+bug de l'appli elle-même (le code a été testé et revérifié) — dis-le moi
+avec le plus de détails possible (quel compte, quelles étapes exactes) et
+je creuserai à nouveau.
+
+## Nouveau dans cette version — suppression d'une décoration/d'un thème/d'un tag
+
+Dans l'écran **🛡️ Espace organisateur**, chaque décoration, thème ou tag
+créé par toi affiche maintenant un bouton **"Supprimer"** (avec une
+confirmation avant suppression définitive, impossible à annuler). Un
+joueur qui avait cette décoration/ce thème/ce tag encore actif au moment
+de la suppression ne voit rien casser côté affichage — l'appli ignore
+simplement, sans erreur, une référence vers quelque chose qui n'existe
+plus (exactement comme pour une décoration/un thème déjà retiré).
+Les **jeux (TCG)** restent volontairement non supprimables, car déjà
+référencés par l'historique des matchs et des événements passés.
+
+## Nouveau dans cette version — publier / dépublier une décoration
+
+Une décoration que tu viens de créer démarre maintenant **"Non publiée"**
+: elle n'apparaît que dans l'Espace organisateur, le temps que tu la
+prépares tranquillement (personne d'autre ne peut la voir, y compris en
+passant par les outils développeur du navigateur — c'est vérifié côté
+serveur, pas seulement dans l'affichage). Dans la liste de gestion, un
+bouton **"Publier"** la rend visible pour tout le monde (verrouillée,
+comme n'importe quelle décoration à débloquer) — publier **ne l'attribue
+à personne automatiquement**, tu dois toujours l'attribuer joueur par
+joueur depuis Paramètres > Voir le profil d'un joueur, comme avant. Un
+bouton **"Dépublier"** permet de la faire disparaître à nouveau du
+catalogue général si besoin.
+
+## Nouveau dans cette version — gabarits téléchargeables
+
+Pour préparer une image de décoration directement dans ton logiciel
+d'image préféré (Photoshop, GIMP, Canva...) plutôt qu'à l'aveugle : le
+formulaire de création de décoration a un bouton **"⬇️ Télécharger le
+gabarit (1024×1024)"** qui te donne une image avec un carré en pointillés
+montrant exactement où se trouve la photo de profil du joueur — dessine
+ta décoration tout autour, exporte, puis importe le résultat. Le
+formulaire de création de thème a de même un bouton **"⬇️ Télécharger le
+gabarit (1080×1920)"** pour préparer une image de fond, avec un repère
+indiquant la zone souvent recouverte par l'interface au centre de l'écran.
+
+## Nouveau dans cette version — image de fond pour un thème personnalisé
+
+En plus des couleurs, un thème personnalisé peut maintenant avoir une
+**image de fond**. Dans le formulaire de création/modification d'un thème
+(Espace organisateur), importe une image via le nouveau champ dédié — un
+aperçu s'affiche immédiatement, avec un bouton pour la retirer si tu
+changes d'avis. L'image est automatiquement compressée pour rester légère.
+
 ## Ce qui est ajouté depuis la v5 — personnalisation des profils
 
 ### Décorations, thèmes et tags créés par toi
@@ -309,9 +386,7 @@ décorations/thèmes/tags).
 - Le classement général basé sur l'historique des duels et des événements.
 - Un vrai système de départage en cas d'égalité en fin d'événement.
 - La gestion propre d'un abandon en cours d'événement.
-- La suppression d'une décoration/d'un thème/d'un tag/d'un jeu une fois
-  créé (pour l'instant, seule la création — et la modification pour les
-  décorations/thèmes/tags — est possible — évite de laisser un joueur ou un
-  match avec une référence vers quelque chose qui n'existe plus).
+- La suppression d'un jeu (TCG) une fois créé — volontairement non permise,
+  car déjà référencé par l'historique des matchs et des événements passés.
 - La mise à jour en direct du profil d'un joueur déjà connecté quand
   l'organisateur lui attribue quelque chose (voir la limite ci-dessus).
