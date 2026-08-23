@@ -5,20 +5,23 @@
 // "inactif". Tous les comptes créés apparaissent, pas seulement ceux déjà
 // venus en boutique.
 // ============================================================================
-import { collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { doc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 import { db } from "./firebase-init.js";
 import { $, renderAvatar, openPlayerProfileModal } from "./app.js";
 
 const usersCol = collection(db, "users");
+const dailySessionRef = doc(db, "dailySession", "current");
 const dailyParticipantsCol = collection(db, "dailySession", "current", "participants");
 const eventsCol = collection(db, "events");
 
 let usersAll = [];
+let dailySessionOpen = false;
 let dailyParticipants = [];
 let activeEventId = null;
 let eventMatches = [];
 let unsubUsers = null;
+let unsubDailySession = null;
 let unsubDaily = null;
 let unsubEvents = null;
 let unsubMatches = null;
@@ -53,10 +56,18 @@ function render() {
     if (m.player2Uid) combatUids.add(m.player2Uid);
   });
 
+  // Un participant du Duel du jour marqué "disponible" ne compte que si la
+  // session est ENCORE ouverte en ce moment : fermer la session ne
+  // remettait pas forcément à jour chaque participant individuellement (et
+  // un ancien statut resté "disponible" ne devrait de toute façon jamais
+  // survivre à la fermeture) — sans cette vérification, un joueur pouvait
+  // rester affiché "Disponible" indéfiniment, boutique fermée ou pas,
+  // connecté ou non, jusqu'à ce qu'il pense lui-même à cliquer sur
+  // "Quitter le duel du jour".
   const rows = usersAll.map((u) => {
     let status = "inactif";
-    if (combatUids.has(u.id) || dailyStatusByUid[u.id] === "en_duel") status = "en_combat";
-    else if (dailyStatusByUid[u.id] === "disponible") status = "disponible";
+    if (combatUids.has(u.id) || (dailySessionOpen && dailyStatusByUid[u.id] === "en_duel")) status = "en_combat";
+    else if (dailySessionOpen && dailyStatusByUid[u.id] === "disponible") status = "disponible";
     return { ...u, status };
   });
 
@@ -111,6 +122,10 @@ export function startHomePlayersListener() {
     usersAll = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     render();
   });
+  unsubDailySession = onSnapshot(dailySessionRef, (snap) => {
+    dailySessionOpen = snap.exists() && snap.data().status === "ouvert";
+    render();
+  });
   unsubDaily = onSnapshot(dailyParticipantsCol, (snap) => {
     dailyParticipants = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     render();
@@ -127,9 +142,10 @@ export function startHomePlayersListener() {
 }
 
 export function stopHomePlayersListener() {
-  [unsubUsers, unsubDaily, unsubEvents, unsubMatches].forEach((u) => u && u());
-  unsubUsers = unsubDaily = unsubEvents = unsubMatches = null;
+  [unsubUsers, unsubDailySession, unsubDaily, unsubEvents, unsubMatches].forEach((u) => u && u());
+  unsubUsers = unsubDailySession = unsubDaily = unsubEvents = unsubMatches = null;
   usersAll = [];
+  dailySessionOpen = false;
   dailyParticipants = [];
   eventMatches = [];
   activeEventId = null;

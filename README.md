@@ -1,6 +1,18 @@
-# Car'Tech Arena — v7
+# Car'Tech Arena — v7.1
 
-Cette version ajoute la **suppression** d'une décoration/d'un thème/d'un
+**Corrige un bug réel signalé après la v7** : un joueur marqué "disponible"
+pouvait rester affiché **"Disponible" indéfiniment** sur l'écran d'accueil
+de tout le monde — boutique fermée ou pas, déconnecté ou pas — si
+l'organisateur fermait la session du Duel du jour pendant que ce joueur
+était encore présent, sans que lui-même ait cliqué sur "Quitter le duel du
+jour" avant. C'est exactement ce qui était arrivé sur le compte "Stooff_".
+Voir "Corrigé dans cette version — statut 'Disponible' qui restait bloqué"
+plus bas pour le détail. **Republie les règles ET les fichiers de cette
+version pour que ça se corrige** (voir "Mise à jour" ci-dessous — le
+correctif ne touche pas aux règles Firestore elles-mêmes, seulement au
+code JS, mais republie les deux par sécurité comme d'habitude).
+
+Cette version ajoute aussi la **suppression** d'une décoration/d'un thème/d'un
 tag, un vrai flux **"non publié" → "Publier" → "Dépublier"** pour les
 décorations (tu prépares une décoration tranquillement, elle n'est visible
 que par toi, puis tu la rends visible pour tout le monde quand elle est
@@ -250,26 +262,41 @@ l'Événement, pour tout le monde. Les 3 jeux d'origine (Pokémon TCG,
 Lorcana, One Piece Card Game) restent toujours disponibles et ne peuvent
 pas être supprimés depuis l'appli.
 
-## Nouveau dans cette version — mot de passe et statut "Disponible", déjà vérifiés
+## Corrigé dans cette version — statut "Disponible" qui restait bloqué
 
-Tu avais signalé deux points ; après vérification (et un test automatisé
-dédié qui reproduit exactement le scénario), les deux fonctionnaient déjà
-correctement, sans changement de code nécessaire :
+**Le souci (compte "Stooff_")** : un joueur marqué "disponible" pendant une
+session de Duel du jour restait affiché **"🟢 Disponible" sur l'écran
+d'accueil de tout le monde, pour toujours** — même la session fermée, même
+le joueur reparti, même déconnecté — tant qu'il n'avait pas cliqué
+lui-même sur "Quitter le duel du jour" **avant** la fermeture de la
+session par l'organisateur. En pratique, personne n'y pense en fin de
+soirée : la session se ferme avec des joueurs encore "disponibles", et
+plus rien ne pouvait les faire redescendre en "Inactif" depuis l'écran
+d'accueil — le bouton "Exclure" lui-même n'est visible que quand une
+session est ouverte, donc impossible à utiliser après coup sans rouvrir
+une session juste pour ça.
 
-- **Changement de mot de passe pour tout le monde** : dans Paramètres, la
-  section "Mot de passe" s'affiche pour **tout compte** créé avec un
-  email/mot de passe (organisateur ou joueur) — elle ne dépend que du mode
-  de connexion utilisé, pas du rôle. Elle est seulement masquée pour un
-  compte connecté via Google (pas de mot de passe à changer dans ce cas,
-  géré par Google).
-- **Un joueur qui quitte le Duel du jour disparaît bien de "Disponible"** :
-  dès qu'il clique sur "Quitter le duel du jour", son statut repasse à
-  "Inactif" sur l'écran d'accueil de tout le monde, en temps réel.
+**Le correctif, à deux niveaux** :
+1. Fermer la session repasse maintenant automatiquement tous les
+   participants encore "disponibles" ou "en attente de validation" à
+   "parti" — la fermeture d'une session nettoie vraiment tout, comme
+   fermer la boutique pour la nuit.
+2. Par sécurité (au cas où un statut resterait mal à jour pour une autre
+   raison), l'écran d'accueil ne considère plus jamais quelqu'un comme
+   "Disponible" à partir du Duel du jour si aucune session n'est **en ce
+   moment même** ouverte — même si son ancien statut en base dit encore
+   "disponible".
 
-Si le souci persiste chez toi malgré tout, ce n'est probablement pas un
-bug de l'appli elle-même (le code a été testé et revérifié) — dis-le moi
-avec le plus de détails possible (quel compte, quelles étapes exactes) et
-je creuserai à nouveau.
+Un compte déjà coincé "Disponible" comme "Stooff_" se corrige tout seul
+dès que cette version est en place, sans rien à faire sur son compte à la
+main.
+
+**Autre point vérifié en même temps, qui fonctionnait déjà correctement**
+: le changement de mot de passe est bien accessible à **tout compte**
+créé avec un email/mot de passe (organisateur ou joueur) dans Paramètres
+— la section "Mot de passe" ne dépend que du mode de connexion utilisé,
+pas du rôle ; elle est seulement masquée pour un compte connecté via
+Google (pas de mot de passe à changer dans ce cas, géré par Google).
 
 ## Nouveau dans cette version — suppression d'une décoration/d'un thème/d'un tag
 

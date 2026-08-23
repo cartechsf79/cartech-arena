@@ -142,6 +142,16 @@ async function openSession() {
 }
 
 async function closeSession() {
+  // Fermer la session ("boutique fermée pour la soirée") ne suffisait pas à
+  // faire disparaître un joueur encore marqué "disponible" (ou "en attente
+  // de validation") au moment de la fermeture — rien ne repassait son statut
+  // à "parti", donc il restait affiché "Disponible" sur l'écran d'accueil de
+  // tout le monde indéfiniment, même déconnecté, jusqu'à ce qu'il clique
+  // lui-même sur "Quitter le duel du jour" (ce que personne ne pense à faire
+  // une fois la boutique fermée). On referme donc aussi, dans la même
+  // action, tous les participants encore "présents" ou "en attente".
+  const toClose = participants.filter((p) => ["disponible", "attente_validation"].includes(p.status));
+  await Promise.all(toClose.map((p) => updateDoc(doc(participantsCol, p.id), { status: "parti" })));
   await updateDoc(sessionRef, { status: "ferme" });
   showToast("Session fermée.");
 }
