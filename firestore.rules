@@ -142,6 +142,9 @@ service cloud.firestore {
         // l'écriture — les deux passent.
         && request.resource.data.get('profileBg', {}).get('owned', []).size() == 0
         && request.resource.data.get('profileBg', {}).get('active', null) == null
+        // Même règle, pour le titre personnalisé (voir /titles plus bas).
+        && request.resource.data.get('title', {}).get('owned', []).size() == 0
+        && request.resource.data.get('title', {}).get('active', null) == null
         && (
           (request.resource.data.role == 'organisateur'
             && request.auth.token.email.lower() == 'cartechsf79@gmail.com')
@@ -185,6 +188,10 @@ service cloud.firestore {
           // et .get() avec valeur par défaut évite toute erreur d'évaluation
           // dans ce cas (voir le long commentaire ci-dessus sur .get()).
           && request.resource.data.get('profileBg', {}).get('owned', []) == resource.data.get('profileBg', {}).get('owned', [])
+          // Titre personnalisé : même "laisser-passer" .get() que le fond de
+          // profil ci-dessus (comptes créés avant cette version sans champ
+          // "title" du tout).
+          && request.resource.data.get('title', {}).get('owned', []) == resource.data.get('title', {}).get('owned', [])
           && (!('tags' in resource.data)
               || request.resource.data.tags.get('owned', []) == resource.data.tags.get('owned', [])
               || isValidSelfSeasonTagGrant(resource.data.tags.get('owned', []), request.resource.data.tags.get('owned', [])))
@@ -205,6 +212,9 @@ service cloud.firestore {
           && (request.resource.data.get('profileBg', {}).get('active', null) == null
               || request.resource.data.get('profileBg', {}).get('active', null) in request.resource.data.get('profileBg', {}).get('owned', [])
               || request.resource.data.get('profileBg', {}).get('active', null) == resource.data.get('profileBg', {}).get('active', null))
+          && (request.resource.data.get('title', {}).get('active', null) == null
+              || request.resource.data.get('title', {}).get('active', null) in request.resource.data.get('title', {}).get('owned', [])
+              || request.resource.data.get('title', {}).get('active', null) == resource.data.get('title', {}).get('active', null))
           && (!('tags' in request.resource.data)
               || tagsActiveValid(request.resource.data.tags.get('active', []), request.resource.data.tags.get('owned', []))
               || request.resource.data.tags.get('active', []) == resource.data.tags.get('active', []))
@@ -269,6 +279,18 @@ service cloud.firestore {
       allow delete: if isOrganizer();
     }
 
+    // Titres personnalisés (affichés sous le pseudo) : même fonctionnement
+    // que /profileBgs ci-dessus (publié/non publié, suppression permise sans
+    // casser l'affichage d'un joueur qui en avait un actif — voir
+    // titleBadgeHtml dans app.js, qui ignore silencieusement une référence
+    // introuvable).
+    match /titles/{titleId} {
+      allow read: if request.auth != null
+        && (resource.data.get('published', true) == true || isOrganizer());
+      allow create, update: if isOrganizer();
+      allow delete: if isOrganizer();
+    }
+
     match /games/{gameId} {
       allow read: if request.auth != null;
       allow create, update: if isOrganizer();
@@ -287,6 +309,18 @@ service cloud.firestore {
     match /seasons/{seasonId} {
       allow read: if request.auth != null;
       allow create, update, delete: if isOrganizer();
+    }
+
+    // Points bonus manuels accordés par l'organisateur en dehors d'un duel
+    // (ex. participation à un événement spécial) — voir js/season.js. Lus
+    // par tout le monde (comme /seasons) car ils entrent dans le total à vie
+    // et le classement de saison affichés à tous les joueurs ; jamais
+    // modifiés une fois créés (montant/raison figés), seulement créés ou
+    // supprimés par l'organisateur.
+    match /pointAdjustments/{adjustmentId} {
+      allow read: if request.auth != null;
+      allow create, delete: if isOrganizer();
+      allow update: if false;
     }
 
     // ========================================================================

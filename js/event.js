@@ -9,6 +9,7 @@ import {
   setDoc,
   getDoc,
   updateDoc,
+  deleteDoc,
   addDoc,
   collection,
   getDocs,
@@ -79,20 +80,42 @@ function startListening() {
 
   unsubEvents = onSnapshot(eventsCol, (snap) => {
     eventsAll = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    // On préfère un événement encore ouvert (inscription/en_cours). S'il n'y
-    // en a aucun, on garde quand même le dernier événement créé (même
-    // "termine") affiché — sinon, dès la finalisation, l'écran redeviendrait
-    // "aucun événement disponible" avant que les joueurs n'aient pu voir leur
-    // place finale. Un nouvel événement créé ensuite reprendra naturellement
-    // la priorité via le premier filtre.
-    const open = eventsAll.find((e) => e.status !== "termine");
+    // L'organisateur peut programmer PLUSIEURS événements à l'avance (voir
+    // Task #28 — calendrier) : ils sont tous créés avec le statut
+    // "inscription" et une date prévue (scheduledDate). Un seul est jamais
+    // vraiment "actif" (celui sur lequel portent inscriptions/appariements/
+    // matchs ci-dessous) — les autres restent visibles, en lecture seule,
+    // dans le calendrier (voir upcomingEvents()) en attendant leur tour :
+    //   1. s'il y a un événement "en_cours" (au plus un à la fois — on ne
+    //      démarre jamais un 2e événement tant que celui-ci n'est pas
+    //      terminé), c'est lui l'actif ;
+    //   2. sinon, parmi ceux en "inscription", celui dont la date prévue est
+    //      la plus proche (une date manquante — anciens comptes d'avant
+    //      cette fonctionnalité — passe en premier, ce qui préserve
+    //      exactement le comportement d'avant sur une installation
+    //      existante) ;
+    //   3. sinon, comme avant, le dernier événement créé même "termine" —
+    //      pour laisser ses participants voir leur place finale.
+    const running = eventsAll.find((e) => e.status === "en_cours");
+    const nextScheduled = eventsAll
+      .filter((e) => e.status === "inscription")
+      .sort((a, b) => (a.scheduledDate || "").localeCompare(b.scheduledDate || ""))[0];
     const mostRecent = eventsAll.slice().sort((a, b) => toDate(b.createdAt) - toDate(a.createdAt))[0];
-    const newActive = open || mostRecent || null;
+    const newActive = running || nextScheduled || mostRecent || null;
     const changed = (newActive && newActive.id) !== (activeEvent && activeEvent.id);
     activeEvent = newActive;
     if (changed) attachActiveEventListeners();
     render();
   });
+}
+
+// Tous les événements "à venir" (programmés, pas encore l'événement actif
+// ci-dessus, pas encore terminés) — affichés en lecture seule dans le
+// calendrier, triés par date prévue.
+function upcomingEvents() {
+  return eventsAll
+    .filter((e) => e.status !== "termine" && e.id !== (activeEvent && activeEvent.id))
+    .sort((a, b) => (a.scheduledDate || "").localeCompare(b.scheduledDate || ""));
 }
 
 function attachActiveEventListeners() {
@@ -155,6 +178,13 @@ function formatCountdown(roundStartAt, roundMinutes) {
 }
 function ordinal(n) {
   return n === 1 ? "1ère" : `${n}ème`;
+}
+// "YYYY-MM-DD" -> "JJ/MM/AAAA", même logique que formatFr dans season.js
+// (simple découpage de chaîne, pas de passage par Date() qui
+// réinterpréterait le fuseau).
+function formatFrDate(dateStr) {
+  const [y, m, d] = (dateStr || "").split("-");
+  return y && m && d ? `${d}/${m}/${y}` : "date non précisée";
 }
 function escapeHtml(str) {
   const d = document.createElement("div");
@@ -229,10 +259,16 @@ function undefeatedCount() {
 async function createEvent() {
   const game = $("#ev-create-game").value;
   const formatId = $("#ev-create-format").value;
+  const scheduledDate = $("#ev-create-date").value;
   const roundMinutes = Math.max(1, Number($("#ev-create-minutes").value) || 10);
+  if (!scheduledDate) {
+    showToast("Choisis une date pour l'événement.", true);
+    return;
+  }
   await addDoc(eventsCol, {
     game,
     formatId,
+    scheduledDate,
     roundMinutes,
     status: "inscription",
     currentRound: 0,
@@ -241,7 +277,19 @@ async function createEvent() {
     createdBy: myUid(),
     finishedAt: null,
   });
-  showToast("Événement créé !");
+  showToast("Événement programmé !");
+}
+
+// Supprime un événement encore purement "programmé" (jamais l'événement
+// "en_cours", ni un événement déjà "termine" — l'historique reste intact).
+async function deleteEvent(eventId) {
+  const target = eventsAll.find((e) => e.id === eventId);
+  if (target && target.status !== "inscription") {
+    showToast("Seul un événement pas encore démarré peut être supprimé.", true);
+    return;
+  }
+  await deleteDoc(doc(eventsCol, eventId));
+  showToast("Événement supprimé du calendrier.");
 }
 
 async function validateEventParticipant(uid) {
@@ -436,28 +484,36 @@ function renderEventOrganizerPanel() {
   }
   el.style.display = "";
 
-  const preserved = captureInputs(["ev-create-minutes"]);
+  const preserved = captureInputs(["ev-create-minutes", "ev-create-date"]);
   let html = `<h3>🏆 Organisateur — Événement</h3>`;
 
+  // Le formulaire de création reste toujours disponible : l'organisateur
+  // peut programmer plusieurs événements à l'avance (voir le calendrier
+  // ci-dessous) — pas seulement un à la fois comme avant.
+  const gameOptions = getAllGames().map((g) => `<option value="${g}">${g}</option>`).join("");
+  const formatOptions = FORMATS.map((f) => `<option value="${f.id}">${f.label}</option>`).join("");
+  html += `
+    <div class="manage-grid-label">Programmer un événement</div>
+    <label for="ev-create-game">Jeu</label>
+    <select id="ev-create-game">${gameOptions}</select>
+    <label for="ev-create-format">Format</label>
+    <select id="ev-create-format">${formatOptions}</select>
+    <label for="ev-create-date">Date</label>
+    <input type="date" id="ev-create-date" required>
+    <label for="ev-create-minutes">Temps par manche (minutes)</label>
+    <input type="number" id="ev-create-minutes" min="1" value="10">
+    <button class="btn btn-primary" type="button" id="ev-btn-create">Programmer l'événement</button>
+  `;
+
   if (!activeEvent || activeEvent.status === "termine") {
-    const gameOptions = getAllGames().map((g) => `<option value="${g}">${g}</option>`).join("");
-    const formatOptions = FORMATS.map((f) => `<option value="${f.id}">${f.label}</option>`).join("");
-    html += `
-      <label for="ev-create-game">Jeu</label>
-      <select id="ev-create-game">${gameOptions}</select>
-      <label for="ev-create-format">Format</label>
-      <select id="ev-create-format">${formatOptions}</select>
-      <label for="ev-create-minutes">Temps par manche (minutes)</label>
-      <input type="number" id="ev-create-minutes" min="1" value="10">
-      <button class="btn btn-primary" type="button" id="ev-btn-create">Créer un événement</button>
-    `;
     el.innerHTML = html;
     $("#ev-btn-create")?.addEventListener("click", () => withErrorToast(createEvent));
     restoreInputs(preserved);
     return;
   }
 
-  html += `<p class="settings-note">${escapeHtml(activeEvent.game)} — ${findFormat(activeEvent.formatId).label} — ${activeEvent.roundMinutes} min/manche</p>`;
+  html += `<div class="manage-grid-label">Événement en préparation / en cours</div>`;
+  html += `<p class="settings-note">${escapeHtml(activeEvent.game)} — ${findFormat(activeEvent.formatId).label} — 📅 ${formatFrDate(activeEvent.scheduledDate)} — ${activeEvent.roundMinutes} min/manche</p>`;
 
   const pending = eventParticipants.filter((p) => p.status === "liste_attente");
   const registered = eventParticipants.filter((p) => p.status === "inscrit");
@@ -518,6 +574,7 @@ function renderEventOrganizerPanel() {
   el.querySelectorAll('[data-action="ev-kick"]').forEach((btn) =>
     btn.addEventListener("click", () => withErrorToast(() => kickEventParticipant(btn.dataset.uid)))
   );
+  $("#ev-btn-create")?.addEventListener("click", () => withErrorToast(createEvent));
   $("#ev-btn-start")?.addEventListener("click", () => withErrorToast(startEvent));
   $("#ev-btn-start-round")?.addEventListener("click", () => withErrorToast(startRoundTimer));
   $("#ev-btn-next-round")?.addEventListener("click", () => withErrorToast(pairNextRound));
@@ -544,7 +601,7 @@ function renderEventPlayerArea() {
   // laisser ses participants voir leur place finale — pour tout le monde
   // d'autre, c'est comme s'il n'y avait aucun événement en cours.
   if (!activeEvent || (activeEvent.status === "termine" && me?.status !== "inscrit")) {
-    el.innerHTML = `<p class="settings-note">Aucun événement n'est disponible pour le moment.</p>`;
+    el.innerHTML = `<p class="settings-note">Aucun événement n'est disponible pour le moment — regarde le calendrier ci-dessous pour voir ce qui est prévu.</p>`;
     return;
   }
 
@@ -557,7 +614,7 @@ function renderEventPlayerArea() {
   }
 
   if (!me || ["refuse", "exclu", "parti"].includes(me.status)) {
-    let msg = `Un événement <b>${escapeHtml(activeEvent.game)}</b> (${findFormat(activeEvent.formatId).label}) est disponible !`;
+    let msg = `Un événement <b>${escapeHtml(activeEvent.game)}</b> (${findFormat(activeEvent.formatId).label}) est disponible ! 📅 ${formatFrDate(activeEvent.scheduledDate)}`;
     if (me?.status === "refuse") msg = "Ta demande d'inscription a été refusée par l'organisateur.";
     if (me?.status === "exclu") msg = "Tu as été retiré de cet événement par l'organisateur.";
     if (me?.status === "parti") msg = "Tu as quitté cet événement.";
@@ -732,11 +789,50 @@ function wireEventMatchEvents(match) {
 }
 
 // ---------------------------------------------------------------------------
+// Rendu — calendrier des événements à venir (tout le monde) — voir Task #28.
+// L'organisateur peut en plus supprimer un événement programmé qu'il n'a pas
+// encore démarré (jamais l'événement en cours ni un événement terminé).
+// ---------------------------------------------------------------------------
+function renderEventCalendarPanel() {
+  const el = $("#ev-calendar-panel");
+  if (!el) return;
+
+  const upcoming = upcomingEvents();
+  if (!upcoming.length) {
+    el.innerHTML = "";
+    el.style.display = "none";
+    return;
+  }
+  el.style.display = "";
+
+  let html = `<h3>📅 Calendrier — événements à venir</h3>`;
+  upcoming.forEach((e) => {
+    const deleteBtn = isOrganizer()
+      ? `<button class="btn-mini btn-mini-no" data-action="ev-delete" data-id="${e.id}">Supprimer</button>`
+      : "";
+    html += `
+      <div class="dd-row">
+        <div class="dd-row-name">📅 ${formatFrDate(e.scheduledDate)} — ${escapeHtml(e.game)} <span class="dd-pill">${findFormat(e.formatId).label}</span></div>
+        <div class="dd-row-actions">${deleteBtn}</div>
+      </div>`;
+  });
+  el.innerHTML = html;
+
+  el.querySelectorAll('[data-action="ev-delete"]').forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (!confirm("Supprimer cet événement programmé ?")) return;
+      withErrorToast(() => deleteEvent(btn.dataset.id));
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Rendu global + navigation
 // ---------------------------------------------------------------------------
 function render() {
   renderEventOrganizerPanel();
   renderEventPlayerArea();
+  renderEventCalendarPanel();
 }
 
 export function showEventScreen() {

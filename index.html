@@ -88,6 +88,7 @@
           <div class="avatar-shell" id="profile-avatar"><div class="avatar-inner">🙂</div></div>
           <div style="flex:1;">
             <div id="profile-pseudo">—</div>
+            <div id="profile-title"></div>
             <div id="profile-email">—</div>
             <span class="badge" id="role-badge">—</span>
           </div>
@@ -112,6 +113,7 @@
           <b>🛡️ Espace organisateur</b><br>
           Le « Duel du jour » et l'« Événement » se gèrent depuis les boutons ci-dessus.
           <button class="btn btn-ghost" id="btn-open-organizer-catalog" type="button" style="margin-top:10px;">🛡️ Décorations, thèmes, tags &amp; jeux</button>
+          <button class="btn btn-ghost" id="btn-open-dashboard" type="button" style="margin-top:10px;">📊 Tableau de bord</button>
         </div>
 
         <button class="btn btn-ghost" id="btn-logout" type="button">Se déconnecter</button>
@@ -209,6 +211,13 @@
         <div class="chip-grid" id="profile-bg-grid"></div>
       </div>
 
+      <!-- Titre personnalisé -->
+      <div class="card settings-section">
+        <h3>Titre</h3>
+        <p class="settings-note">Débloqué uniquement par l'organisateur — s'affiche sous ton pseudo partout où ton profil apparaît.</p>
+        <div class="chip-grid" id="titles-grid"></div>
+      </div>
+
       <!-- Thème -->
       <div class="card settings-section">
         <h3>Thème</h3>
@@ -293,6 +302,18 @@
             <p class="settings-note">Le gabarit indique le format conseillé (plus haut que large) et un repère de zone visible — garde surtout l'essentiel de l'image bien centré, car la zone exactement visible varie un peu selon l'écran (accueil, popup « Voir le profil », recherche). Modifie le gabarit dans ton logiciel d'image puis importe le résultat ici. Un fond créé ici démarre « non publié » (visible seulement par toi) : utilise le bouton « Publier » dans la liste ci-dessus une fois prêt.</p>
             <button class="btn btn-primary" type="submit" id="admin-profile-bg-submit">Créer le fond de profil</button>
             <button class="btn btn-ghost" type="button" id="admin-profile-bg-cancel" style="display:none;">Annuler la modification</button>
+          </form>
+        </div>
+
+        <div class="card settings-section">
+          <h3>🎖️ Titres</h3>
+          <div class="chip-grid" id="admin-title-list"></div>
+          <form id="form-admin-title">
+            <label for="admin-title-name">Nom du titre</label>
+            <input type="text" id="admin-title-name" maxlength="30" required placeholder="Ex : Champion de la saison 2">
+            <p class="settings-note">Un titre créé ici démarre « non publié » (visible seulement par toi) : utilise le bouton « Publier » dans la liste ci-dessus une fois prêt, puis attribue-le à un joueur depuis Paramètres &gt; « Voir le profil d'un joueur ».</p>
+            <button class="btn btn-primary" type="submit" id="admin-title-submit">Créer le titre</button>
+            <button class="btn btn-ghost" type="button" id="admin-title-cancel" style="display:none;">Annuler la modification</button>
           </form>
         </div>
 
@@ -402,6 +423,7 @@
 
       <div class="card settings-section" id="ev-organizer-panel" style="display:none;"></div>
       <div class="card settings-section" id="ev-player-area"></div>
+      <div class="card settings-section" id="ev-calendar-panel"></div>
     </div>
   </div>
 
@@ -417,6 +439,23 @@
 
       <div class="card settings-section" id="ev-history-list"></div>
       <div class="card settings-section" id="ev-history-detail"></div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- ÉCRAN : Tableau de bord organisateur -->
+  <!-- ============================================================ -->
+  <div class="view" id="view-dashboard">
+    <div class="app-wrap settings-wrap">
+      <div class="settings-header">
+        <button class="icon-btn" id="btn-close-dashboard" type="button" title="Retour">←</button>
+        <h1 class="settings-title">📊 Tableau de bord</h1>
+      </div>
+
+      <div class="card settings-section" id="dash-summary"></div>
+      <div class="card settings-section" id="dash-weekly"></div>
+      <div class="card settings-section" id="dash-games"></div>
+      <div class="card settings-section" id="dash-regulars"></div>
     </div>
   </div>
 
@@ -473,5 +512,6 @@
   <script type="module" src="js/daily-duel.js"></script>
   <script type="module" src="js/event.js"></script>
   <script type="module" src="js/season.js"></script>
+  <script type="module" src="js/dashboard.js"></script>
 </body>
 </html>

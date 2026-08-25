@@ -1,26 +1,52 @@
-# Car'Tech Arena — v8.9
+# Car'Tech Arena — v9
 
-Cette version ajoute le **suivi par deck/archétype** : en plus du score,
-un joueur peut maintenant déclarer **quel deck il a joué** pour un duel
-(Duel du jour) ou un événement — via des **éléments** (couleurs/types de
-deck, ex. les couleurs d'encre à Lorcana) que tu configures toi-même,
-jeu par jeu, dans **Espace organisateur > Jeux**. Le deck déclaré reste
-**caché à l'adversaire** jusqu'à la fin du duel/événement (pour éviter
-le "contre" — préparer sa liste en fonction du deck adverse connu à
-l'avance), une règle appliquée **côté serveur** (règles Firestore), pas
-seulement à l'affichage. Voir "Nouveau dans cette version — suivi par
-deck/archétype (éléments de jeu)" plus bas pour le détail complet.
+Cette version ajoute **4 fonctionnalités** demandées pour mieux piloter
+la boutique, pas juste le jeu :
+
+- **Calendrier des événements à venir** : l'organisateur peut programmer
+  plusieurs événements à l'avance (chacun avec sa date) au lieu d'un
+  seul à la fois — un seul est jamais réellement "en cours" (inscriptions
+  ouvertes puis manches lancées), les autres restent visibles pour tout
+  le monde dans un calendrier en lecture seule, pour que les joueurs
+  s'organisent à l'avance au lieu de découvrir un événement le jour même.
+- **Titre personnalisé** : un titre texte (ex. "Champion de la saison 2")
+  affiché sous le pseudo, débloqué comme récompense par l'organisateur —
+  même fonctionnement que les décorations/fonds de profil (catalogue à
+  créer/publier, puis à attribuer joueur par joueur).
+- **Tableau de bord organisateur** : un nouvel écran (visible seulement
+  par l'organisateur) avec les indicateurs boutique sur les 30 derniers
+  jours — joueurs actifs par semaine, jeu le plus populaire, joueurs
+  "réguliers" (revenus plusieurs jours différents).
+- **Points bonus manuels** : l'organisateur peut créditer (ou retirer)
+  des points à un joueur en dehors d'un duel, depuis sa fiche ("Voir le
+  profil d'un joueur" > Paramètres) — comptent dans son total à vie, et
+  dans le total de la saison en cours si une saison est active au moment
+  où le bonus est accordé.
+
+Voir les 4 sections "Nouveau dans cette version" plus bas pour le détail
+complet de chacune.
 
 **Republication des règles Firestore nécessaire pour cette version**
-(deux nouvelles collections protégées : `decks` sous chaque duel, `deck`
-sous chaque participant d'événement) — voir "Mise à jour depuis une
-version précédente" plus bas.
-
-Les statistiques de victoire **par deck** (ex. "quel deck gagne le
-plus") ne sont pas encore calculées dans cette version — seule la
-déclaration/révélation du deck joué est en place pour l'instant.
+(nouvelle collection `titles`, nouveaux champs protégés sur le profil
+joueur pour le titre actif/possédé, nouvelle collection
+`pointAdjustments`) — voir "Mise à jour depuis une version précédente"
+plus bas.
 
 ---
+
+## Historique — v8.9
+
+Cette version ajoutait le **suivi par deck/archétype** : en plus du
+score, un joueur pouvait déclarer **quel deck il a joué** pour un duel
+(Duel du jour) ou un événement — via des **éléments** (couleurs/types de
+deck, ex. les couleurs d'encre à Lorcana) configurés jeu par jeu dans
+**Espace organisateur > Jeux**. Le deck déclaré restait **caché à
+l'adversaire** jusqu'à la fin du duel/événement, une règle appliquée
+côté serveur.
+
+Republication des règles Firestore nécessaire pour cette version (deux
+nouvelles collections protégées : `decks` sous chaque duel, `deck` sous
+chaque participant d'événement).
 
 ## Historique — v8.8
 
@@ -213,12 +239,13 @@ d'avoir à activer un mode payant.
    changes"). `js/firebase-config.js` contient déjà tes vraies clés et ton
    email organisateur, pas besoin d'y retoucher.
 
-2. **Republie les règles Firestore** (règles modifiées pour la v8.9 —
-   deux nouvelles collections protégées pour cacher les decks déclarés
-   jusqu'à la fin du duel/événement, voir plus haut — cette étape est
-   **obligatoire** cette fois-ci ; garde de toute façon l'habitude de les
-   republier à chaque mise à jour, pour être sûr que tout reste
-   synchronisé) : Firebase Console > Firestore Database > onglet "Règles"
+2. **Republie les règles Firestore** (règles modifiées pour la v9 —
+   nouvelle collection `titles`, nouveaux champs protégés pour le titre
+   actif/possédé sur le profil joueur, nouvelle collection
+   `pointAdjustments` pour les bonus de points manuels, voir plus haut —
+   cette étape est **obligatoire** cette fois-ci ; garde de toute façon
+   l'habitude de les republier à chaque mise à jour, pour être sûr que
+   tout reste synchronisé) : Firebase Console > Firestore Database > onglet "Règles"
    > sélectionne TOUT le contenu déjà présent et supprime-le d'abord >
    colle tout le contenu de `firestore.rules` (vérifie qu'il commence par
    `rules_version = '2';` et finit par une accolade `}` seule sur la
@@ -562,6 +589,74 @@ que ça ne peut fonctionner que pour LE tag de la saison en cours, une
 seule fois, sans jamais pouvoir toucher à un autre tag ou en retirer un —
 testé et vérifié qu'un joueur ne peut pas s'en servir pour s'attribuer un
 tag "récompense" normal.
+
+## Nouveau dans cette version — calendrier des événements à venir
+
+L'organisateur peut maintenant **programmer plusieurs événements à
+l'avance**, chacun avec sa **date prévue** — plus besoin de créer un
+événement le jour même. Depuis Événement > Organisateur, le formulaire
+"Programmer un événement" reste toujours disponible (même pendant qu'un
+autre événement est déjà en préparation ou en cours) : jeu, format, date
+et temps par manche.
+
+À tout moment, **un seul événement est réellement "actif"** (celui sur
+lequel portent les inscriptions puis les manches) — c'est automatiquement
+celui déjà en cours, ou sinon celui dont la **date prévue est la plus
+proche** parmi ceux encore programmés. Tous les autres événements
+programmés apparaissent, pour **tout le monde** (organisateur et
+joueurs), dans un nouveau **calendrier "événements à venir"** en bas de
+l'écran Événement — une simple liste triée par date, pour que les
+joueurs voient ce qui arrive et s'organisent en avance. L'organisateur
+peut supprimer un événement encore purement programmé (pas encore
+démarré) directement depuis ce calendrier, s'il change d'avis sur une
+date ou un jeu.
+
+## Nouveau dans cette version — titre personnalisé
+
+En plus des tags, un joueur peut maintenant afficher un **titre**
+(un texte court, ex. "Champion de la saison 2") juste sous son pseudo —
+partout où son profil apparaît (accueil, popup "Voir le profil",
+recherche organisateur). Fonctionne exactement comme les
+décorations/fonds de profil : toi, l'organisateur, crées des titres dans
+**Espace organisateur > Titres** (nom seulement, pas d'image), les
+publies quand ils sont prêts, puis les **attribues** joueur par joueur
+depuis "Voir le profil d'un joueur" > Paramètres. Le joueur choisit
+ensuite, parmi les titres qui lui ont été attribués, lequel afficher (ou
+aucun) depuis Paramètres > Titre.
+
+## Nouveau dans cette version — tableau de bord organisateur
+
+Un nouvel écran **"📊 Tableau de bord"** (visible uniquement par toi,
+depuis Espace organisateur) donne une vue d'ensemble de l'activité de la
+boutique sur les **30 derniers jours** (fenêtre glissante, pas un mois
+civil) :
+
+- **Joueurs actifs par semaine** : le nombre de joueurs distincts ayant
+  joué au moins un duel, semaine par semaine sur la période.
+- **Jeu le plus populaire** : les jeux classés par nombre de duels joués.
+- **Joueurs réguliers** : ceux ayant joué au moins un duel sur 3 jours
+  différents ou plus (pas juste beaucoup de duels un seul soir) — pour
+  repérer qui revient vraiment en boutique.
+
+Ces indicateurs se basent sur l'activité du **Duel du jour** (pas encore
+sur l'Événement — voir "Ce qui n'est pas encore fait").
+
+## Nouveau dans cette version — points bonus manuels
+
+Tu peux maintenant créditer (ou retirer, avec un nombre négatif) des
+**points en dehors d'un duel** à un joueur précis — par exemple pour une
+participation à un événement spécial ou un geste commercial. Ça se fait
+depuis Paramètres > "Voir le profil d'un joueur" > recherche le joueur,
+tout en bas de sa fiche : indique le nombre de points et une raison
+(optionnelle), "Ajouter le bonus". L'historique des bonus déjà accordés
+à ce joueur s'affiche juste au-dessus, avec un bouton pour en supprimer
+un en cas d'erreur.
+
+Un bonus compte **toujours** dans le total à vie du joueur, et compte
+**aussi** dans le total de la saison en cours **si une saison est
+active au moment où tu l'accordes** (comme les points gagnés par un
+duel, mais sans le plafond de 15 points/jour, qui ne s'applique qu'aux
+duels).
 
 ## Nouveau dans cette version — suivi par deck/archétype (éléments de jeu)
 
@@ -968,3 +1063,10 @@ décorations/thèmes/tags).
   gagne le plus", taux de victoire par élément) — pour l'instant, seule
   la déclaration/révélation du deck joué à chaque duel/événement est en
   place ; le calcul de stats agrégées par deck n'est pas encore fait.
+- Le **tableau de bord organisateur** se base uniquement sur l'activité
+  du Duel du jour (pas encore sur les inscriptions/matchs d'Événement).
+- Le seuil de "joueur régulier" du tableau de bord (3 jours différents
+  sur 30) n'est pas encore réglable depuis l'appli.
+- Le **calendrier des événements à venir** ne gère pas les événements
+  récurrents (un événement chaque semaine par ex.) — chaque date se
+  programme encore une par une.

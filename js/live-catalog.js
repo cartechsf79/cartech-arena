@@ -30,12 +30,14 @@ const themesCol = collection(db, "themes");
 const tagsCol = collection(db, "tags");
 const gamesCol = collection(db, "games");
 const profileBgsCol = collection(db, "profileBgs");
+const titlesCol = collection(db, "titles");
 
 let liveDecorations = [];
 let liveThemes = [];
 let liveTags = [];
 let liveGames = [];
 let liveProfileBgs = [];
+let liveTitles = [];
 let started = false;
 let listeners = [];
 
@@ -105,6 +107,13 @@ export function startLiveCatalogs(onUpdate) {
       document.dispatchEvent(new CustomEvent("cartech:catalogs"));
     })
   );
+  listeners.push(
+    onSnapshot(titlesCol, (snap) => {
+      liveTitles = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      onUpdate?.();
+      document.dispatchEvent(new CustomEvent("cartech:catalogs"));
+    })
+  );
 }
 
 export function stopLiveCatalogs() {
@@ -115,6 +124,7 @@ export function stopLiveCatalogs() {
   liveTags = [];
   liveGames = [];
   liveProfileBgs = [];
+  liveTitles = [];
   started = false;
 }
 
@@ -162,6 +172,16 @@ export function getAllProfileBgs({ includeUnpublished = false } = {}) {
 }
 export function findAnyProfileBg(id) {
   return liveProfileBgs.find((b) => b.id === id) || null;
+}
+
+// Titres personnalisés (affichés sous le pseudo) : pas de "builtin" non plus
+// (aucun titre de base), même fonctionnement publié/non publié que les
+// fonds de profil et les décorations.
+export function getAllTitles({ includeUnpublished = false } = {}) {
+  return liveTitles.filter((t) => includeUnpublished || t.published);
+}
+export function findAnyTitle(id) {
+  return liveTitles.find((t) => t.id === id) || null;
 }
 
 // Condition de victoire configurée pour un jeu (de base ou personnalisé) —
@@ -827,6 +847,23 @@ export async function updateProfileBg(id, patch) {
 }
 export async function deleteProfileBg(id) {
   await deleteDoc(doc(profileBgsCol, id));
+}
+
+// Titre personnalisé (affiché sous le pseudo, ex. "Champion de la saison
+// 2") : juste un nom, pas d'image — même logique publié/non publié que les
+// fonds de profil ci-dessus.
+export async function createTitle({ name }) {
+  await addDoc(titlesCol, {
+    name: name.trim(),
+    published: false,
+    createdAt: serverTimestamp(),
+  });
+}
+export async function updateTitle(id, patch) {
+  await updateDoc(doc(titlesCol, id), patch);
+}
+export async function deleteTitle(id) {
+  await deleteDoc(doc(titlesCol, id));
 }
 
 export async function createTheme({ name, colors, bgImageDataUrl }) {

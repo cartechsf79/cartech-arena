@@ -125,6 +125,12 @@ input[type=range] { width: 100%; margin: 6px 0 4px; accent-color: var(--accent);
 .badge-player { background: rgba(91,141,239,.15); color: #7fb4ff; }
 .badge-organizer { background: rgba(245,185,66,.15); color: var(--accent2); }
 
+/* ---- titre personnalisé sous le pseudo (voir titleBadgeHtml dans app.js) ---- */
+.profile-title-badge {
+  display: inline-block; font-size: 12px; font-weight: 700; color: var(--accent2);
+  margin: 2px 0 4px;
+}
+
 .stat-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0; }
 .stat-box { flex: 1 1 90px; background: var(--bg2); border: 1px solid var(--panel-border); border-radius: 12px; padding: 12px; text-align: center; }
 .stat-box b { display: block; font-size: 19px; }

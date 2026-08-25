@@ -19,7 +19,7 @@ import {
 
 import { auth, db, ORGANIZER_EMAIL } from "./firebase-init.js";
 import { DEFAULT_OWNED_THEMES } from "./catalog.js";
-import { startLiveCatalogs, stopLiveCatalogs, findAnyDecoration, findAnyTag, findAnyProfileBg, applyThemeLive, contrastTextColor, getTagIcon } from "./live-catalog.js";
+import { startLiveCatalogs, stopLiveCatalogs, findAnyDecoration, findAnyTag, findAnyProfileBg, findAnyTitle, applyThemeLive, contrastTextColor, getTagIcon } from "./live-catalog.js";
 import { startHomePlayersListener, stopHomePlayersListener } from "./home-players.js";
 import { startSeasonBannerListener, stopSeasonBannerListener, startCareerStatsListener, stopCareerStatsListener, fetchCareerStats, fetchHeadToHead } from "./season.js";
 
@@ -102,6 +102,7 @@ async function ensureUserProfile(user, pseudoFromSignup) {
     if (!data.decorations) patch.decorations = { owned: [], active: null };
     if (!data.theme) patch.theme = { owned: DEFAULT_OWNED_THEMES, active: "classique" };
     if (!data.profileBg) patch.profileBg = { owned: [], active: null };
+    if (!data.title) patch.title = { owned: [], active: null };
     // Un compte dont "tags" existe déjà mais sans "owned" (ex. un joueur qui
     // a activé un tag "par défaut" avant même que "tags" ait été créé sur
     // son document) bloquait TOUTES ses modifications futures — voir
@@ -135,6 +136,7 @@ async function ensureUserProfile(user, pseudoFromSignup) {
     theme: { owned: DEFAULT_OWNED_THEMES, active: "classique" },
     tags: { owned: [], active: [] },
     profileBg: { owned: [], active: null },
+    title: { owned: [], active: null },
     createdAt: serverTimestamp(),
   };
 
@@ -264,11 +266,26 @@ export function applyProfileBackground(el, profile) {
   }
 }
 
+// Titre personnalisé actif (facultatif, débloqué par l'organisateur comme
+// une décoration/un fond de profil) : une petite ligne de texte affichée
+// juste sous le pseudo, partout où un pseudo apparaît (fiche d'accueil,
+// popup "Voir le profil", recherche organisateur). Retourne une chaîne
+// vide si aucun titre actif — l'élément appelant reste alors simplement
+// vide (pas d'espace réservé inutile).
+export function titleBadgeHtml(profile) {
+  const titleId = profile?.title?.active || null;
+  const title = titleId ? findAnyTitle(titleId) : null;
+  if (!title) return "";
+  return `<span class="profile-title-badge">🎖️ ${escapeHtmlLocal(title.name)}</span>`;
+}
+
 export function renderProfile(profile) {
   currentProfile = profile;
   broadcastProfile();
 
   $("#profile-pseudo").textContent = profile.pseudo;
+  const titleEl = $("#profile-title");
+  if (titleEl) titleEl.innerHTML = titleBadgeHtml(profile);
   $("#profile-email").textContent = profile.email;
   renderAvatar($("#profile-avatar"), profile, 54);
   applyProfileBackground($("#profile-card"), profile);
@@ -397,6 +414,7 @@ function renderPlayerProfileModalContent(targetUid, profile, career, headToHead)
       <div class="avatar-shell" id="player-modal-avatar"></div>
       <div class="player-card-info">
         <div style="font-weight:800;">${escapeHtmlLocal(profile.pseudo)}</div>
+        ${titleBadgeHtml(profile)}
         <span class="badge ${isOrg ? "badge-organizer" : "badge-player"}">${isOrg ? "🛡️ Organisateur" : "🎮 Joueur"}</span>
         <div class="settings-note">${career.lifetimePoints} pts (total) · ${winsLossesHtml(career.lifetimeWins, career.lifetimeLosses)} (tous matchs)</div>
         <div class="settings-note">${seasonLine}</div>

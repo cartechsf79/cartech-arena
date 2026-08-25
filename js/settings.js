@@ -27,7 +27,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 import { auth, db, ORGANIZER_EMAIL } from "./firebase-init.js";
-import { $, showToast, friendlyError, getCurrentProfile, getCurrentUid, renderAvatar, renderProfile, showSettingsScreen, applyProfileBackground, winsLossesHtml } from "./app.js";
+import { $, showToast, friendlyError, getCurrentProfile, getCurrentUid, renderAvatar, renderProfile, showSettingsScreen, applyProfileBackground, winsLossesHtml, titleBadgeHtml } from "./app.js";
 import {
   getAllDecorations,
   getAllThemes,
@@ -62,6 +62,11 @@ import {
   createProfileBg,
   updateProfileBg,
   deleteProfileBg,
+  getAllTitles,
+  findAnyTitle,
+  createTitle,
+  updateTitle,
+  deleteTitle,
   getAllGames,
   createGame,
   getGameWinCondition,
@@ -77,7 +82,7 @@ import {
   downloadProfileBgTemplate,
   downloadGameElementTemplate,
 } from "./live-catalog.js";
-import { fetchCareerStats, fetchHeadToHead } from "./season.js";
+import { fetchCareerStats, fetchHeadToHead, fetchAdjustmentsForUid, addPointAdjustment, deletePointAdjustment } from "./season.js";
 
 const MAX_PHOTO_BYTES = 700_000; // marge de sécurité sous la limite de 1 Mo par document Firestore
 const CROP_VIEWPORT = 260; // doit correspondre à la taille CSS de .cropper-viewport
@@ -117,6 +122,7 @@ function populateSettingsScreen() {
 
   renderDecorationsGrid(profile);
   renderProfileBgGrid(profile);
+  renderTitlesGrid(profile);
   renderThemesGrid(profile);
   renderTagsGrid(profile);
 
@@ -454,6 +460,50 @@ async function setActiveProfileBg(bgId) {
 }
 
 // ---------------------------------------------------------------------------
+// Titre personnalisé (soi-même) — même logique de déblocage que le fond de
+// profil ci-dessus (owned/active par compte, débloqué uniquement par
+// l'organisateur) ; juste un nom, pas d'image.
+// ---------------------------------------------------------------------------
+function renderTitlesGrid(profile) {
+  const grid = $("#titles-grid");
+  if (!grid) return;
+  grid.innerHTML = "";
+  const owned = profile?.title?.owned || [];
+  const active = profile?.title?.active || null;
+  const isOrg = profile?.role === "organisateur";
+
+  const noneChip = document.createElement("div");
+  noneChip.className = "chip" + (active === null ? " active" : "");
+  noneChip.innerHTML = `<div class="chip-swatch" style="background:var(--bg2);border:1px dashed var(--panel-border);"></div><div class="chip-label">Aucun</div>`;
+  noneChip.onclick = () => setActiveTitle(null);
+  grid.appendChild(noneChip);
+
+  const visible = getAllTitles({ includeUnpublished: true }).filter((t) => t.published || owned.includes(t.id));
+  visible.forEach((title) => {
+    const isOwned = isOrg || owned.includes(title.id);
+    const chip = document.createElement("div");
+    chip.className = "chip" + (!isOwned ? " locked" : "") + (active === title.id ? " active" : "");
+    chip.innerHTML = `
+      <div class="chip-swatch" style="display:flex;align-items:center;justify-content:center;font-size:16px;">🎖️</div>
+      <div class="chip-label">${escapeHtml(title.name)}</div>
+      <div class="chip-sub">${isOwned ? "Débloqué" : "🔒 verrouillé"}</div>
+    `;
+    if (isOwned) chip.onclick = () => setActiveTitle(title.id);
+    grid.appendChild(chip);
+  });
+}
+
+async function setActiveTitle(titleId) {
+  try {
+    await updateDoc(doc(db, "users", getCurrentUid()), { "title.active": titleId });
+    const profile = await refreshAfterChange();
+    renderTitlesGrid(profile);
+  } catch (err) {
+    showToast(friendlyError(err), true);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Thèmes (soi-même) — fusionne les 6 thèmes de base et les thèmes
 // personnalisés créés par l'organisateur (toujours verrouillés par défaut,
 // comme les thèmes "Trophée").
@@ -628,6 +678,7 @@ async function renderPlayerCard(targetUid, targetProfile) {
     : "";
   info.innerHTML = `
     <div style="font-weight:800;">${targetProfile.pseudo}</div>
+    ${titleBadgeHtml(targetProfile)}
     <span class="badge ${isOrg ? "badge-organizer" : "badge-player"}">${isOrg ? "🛡️ Organisateur" : "🎮 Joueur"}</span>
     <div class="settings-note">${career.lifetimePoints} pts (total) · ${winsLossesHtml(career.lifetimeWins, career.lifetimeLosses)} (tous matchs)</div>
     <div class="settings-note">${seasonLine}</div>
@@ -659,11 +710,11 @@ async function renderPlayerCard(targetUid, targetProfile) {
   applyProfileBackground(profileZone, targetProfile);
 
   if (isOrganizer) {
-    resultEl.appendChild(buildOrganizerManagePanel(targetUid, targetProfile));
+    resultEl.appendChild(await buildOrganizerManagePanel(targetUid, targetProfile));
   }
 }
 
-function buildOrganizerManagePanel(targetUid, targetProfile) {
+async function buildOrganizerManagePanel(targetUid, targetProfile) {
   const wrap = document.createElement("div");
 
   const decoLabel = document.createElement("div");
@@ -749,6 +800,53 @@ function buildOrganizerManagePanel(targetUid, targetProfile) {
     bgGrid.appendChild(chip);
   });
   wrap.appendChild(bgGrid);
+
+  const titleLabel = document.createElement("div");
+  titleLabel.className = "manage-grid-label";
+  titleLabel.textContent = "🎖️ Titres à attribuer";
+  wrap.appendChild(titleLabel);
+
+  const titleGrid = document.createElement("div");
+  titleGrid.className = "chip-grid";
+  getAllTitles({ includeUnpublished: true }).forEach((title) => {
+    const owned = (targetProfile.title?.owned || []).includes(title.id);
+    const chip = document.createElement("div");
+    chip.className = "chip" + (owned ? " active" : "");
+    chip.innerHTML = `
+      <div class="chip-swatch" style="display:flex;align-items:center;justify-content:center;font-size:16px;">🎖️</div>
+      <div class="chip-label">${escapeHtml(title.name)}</div>
+      <div class="chip-sub">${owned ? "✅ Possédé" : "Donner"}</div>
+    `;
+    chip.onclick = async () => {
+      try {
+        const patch = {
+          "title.owned": owned ? arrayRemove(title.id) : arrayUnion(title.id),
+        };
+        // Même logique que les décorations/fonds de profil : si on retire un
+        // titre actuellement affiché par le joueur, on désactive aussi tout
+        // de suite plutôt que de laisser "active" pointer vers un titre qu'il
+        // ne possède plus.
+        if (owned && targetProfile.title?.active === title.id) {
+          patch["title.active"] = null;
+        }
+        await updateDoc(doc(db, "users", targetUid), patch);
+        const snap = await getDoc(doc(db, "users", targetUid));
+        await renderPlayerCard(targetUid, snap.data());
+        showToast(owned ? "Titre retiré." : "Titre attribué !");
+      } catch (err) {
+        showToast(friendlyError(err), true);
+      }
+    };
+    titleGrid.appendChild(chip);
+  });
+  if (!getAllTitles({ includeUnpublished: true }).length) {
+    const p = document.createElement("p");
+    p.className = "settings-note";
+    p.textContent = "Aucun titre créé pour l'instant (crée-en dans « Espace organisateur » plus bas).";
+    wrap.appendChild(p);
+  } else {
+    wrap.appendChild(titleGrid);
+  }
 
   const themeLabel = document.createElement("div");
   themeLabel.className = "manage-grid-label";
@@ -837,6 +935,76 @@ function buildOrganizerManagePanel(targetUid, targetProfile) {
     wrap.appendChild(tagGrid);
   }
 
+  const pointsLabel = document.createElement("div");
+  pointsLabel.className = "manage-grid-label";
+  pointsLabel.textContent = "🎯 Points bonus (manuel)";
+  wrap.appendChild(pointsLabel);
+
+  const pointsNote = document.createElement("p");
+  pointsNote.className = "settings-note";
+  pointsNote.textContent =
+    "Ajoute (ou retire, avec un nombre négatif) des points en dehors d'un duel — ex. participation à un événement spécial, geste commercial. Compte dans le total à vie du joueur, et dans son total de la saison en cours si une saison est active en ce moment.";
+  wrap.appendChild(pointsNote);
+
+  const adjustments = await fetchAdjustmentsForUid(targetUid);
+  if (adjustments.length) {
+    const histList = document.createElement("div");
+    adjustments.forEach((adj) => {
+      const row = document.createElement("div");
+      row.className = "dd-row";
+      const sign = adj.amount > 0 ? "+" : "";
+      row.innerHTML = `
+        <div class="dd-row-name">${sign}${adj.amount} pt${Math.abs(adj.amount) > 1 ? "s" : ""}${
+        adj.reason ? ` — ${escapeHtml(adj.reason)}` : ""
+      }${adj.seasonId ? "" : ' <span class="dd-pill">hors saison</span>'}</div>
+        <div class="dd-row-actions">
+          <button class="btn-mini btn-mini-no" type="button" data-id="${adj.id}">Supprimer</button>
+        </div>
+      `;
+      row.querySelector("button").addEventListener("click", async () => {
+        if (!confirm("Supprimer ce bonus de points ?")) return;
+        try {
+          await deletePointAdjustment(adj.id);
+          const snap = await getDoc(doc(db, "users", targetUid));
+          await renderPlayerCard(targetUid, snap.data());
+          showToast("Bonus supprimé.");
+        } catch (err) {
+          showToast(friendlyError(err), true);
+        }
+      });
+      histList.appendChild(row);
+    });
+    wrap.appendChild(histList);
+  }
+
+  const pointsForm = document.createElement("form");
+  pointsForm.innerHTML = `
+    <label for="points-adjust-amount-${targetUid}">Points à ajouter (négatif pour retirer)</label>
+    <input type="number" id="points-adjust-amount-${targetUid}" step="1" required>
+    <label for="points-adjust-reason-${targetUid}">Raison (optionnel)</label>
+    <input type="text" id="points-adjust-reason-${targetUid}" maxlength="120" placeholder="Ex. tournoi spécial samedi">
+    <button class="btn btn-primary" type="submit">Ajouter le bonus</button>
+  `;
+  pointsForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const amountInput = $(`#points-adjust-amount-${targetUid}`);
+    const reasonInput = $(`#points-adjust-reason-${targetUid}`);
+    const amount = parseInt(amountInput.value, 10);
+    if (!Number.isFinite(amount) || amount === 0) {
+      showToast("Indique un nombre de points (différent de 0).", true);
+      return;
+    }
+    try {
+      await addPointAdjustment(targetUid, amount, reasonInput.value.trim());
+      const snap = await getDoc(doc(db, "users", targetUid));
+      await renderPlayerCard(targetUid, snap.data());
+      showToast("Bonus de points ajouté !");
+    } catch (err) {
+      showToast(friendlyError(err), true);
+    }
+  });
+  wrap.appendChild(pointsForm);
+
   return wrap;
 }
 
@@ -849,6 +1017,7 @@ let editingDecoId = null;
 let editingDecoCurrent = null; // { imageDataUrl, type } de la décoration en cours de modification
 let editingProfileBgId = null;
 let editingProfileBgDataUrl = null; // image en cours (déjà enregistrée ou tout juste importée), ou null
+let editingTitleId = null;
 let editingThemeId = null;
 let editingThemeBgDataUrl = null; // image de fond en cours (déjà enregistrée ou tout juste importée), ou null
 let editingTagId = null;
@@ -862,6 +1031,7 @@ function renderOrganizerCatalogPanel() {
   if (!isOrg) return;
   renderDecoManageList();
   renderProfileBgManageList();
+  renderTitleManageList();
   renderThemeManageList();
   renderTagManageList();
   renderGameManageList();
@@ -1117,6 +1287,106 @@ async function handleAdminProfileBgSubmit(e) {
       showToast("Fond de profil créé !");
     }
     cancelEditProfileBg();
+  } catch (err) {
+    showToast(friendlyError(err), true);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Titres (Espace organisateur) — même fonctionnement publié/non publié que
+// les fonds de profil ci-dessus, mais pas d'image à gérer (juste un nom).
+// ---------------------------------------------------------------------------
+function renderTitleManageList() {
+  const list = $("#admin-title-list");
+  if (!list) return;
+  const all = getAllTitles({ includeUnpublished: true });
+  list.innerHTML = all.length ? "" : `<p class="settings-note">Aucun titre créé pour l'instant.</p>`;
+  all.forEach((title) => {
+    const row = document.createElement("div");
+    row.className = "admin-manage-row";
+
+    const chip = document.createElement("div");
+    chip.className = "chip" + (editingTitleId === title.id ? " active" : "");
+    chip.innerHTML = `
+      <div class="chip-swatch" style="display:flex;align-items:center;justify-content:center;font-size:16px;">🎖️</div>
+      <div class="chip-label">${escapeHtml(title.name)}</div>
+      <div class="chip-sub">${title.published ? "✅ Publié" : "🔒 Non publié"} · Modifier</div>
+    `;
+    chip.onclick = () => startEditTitle(title);
+    row.appendChild(chip);
+
+    const actions = document.createElement("div");
+    actions.className = "admin-manage-actions";
+
+    const publishBtn = document.createElement("button");
+    publishBtn.type = "button";
+    publishBtn.className = "btn-small";
+    publishBtn.textContent = title.published ? "Dépublier" : "Publier";
+    publishBtn.onclick = async (e) => {
+      e.stopPropagation();
+      try {
+        await updateTitle(title.id, { published: !title.published });
+        showToast(title.published ? "Titre dépublié (visible uniquement par toi)." : "Titre publié pour tout le monde !");
+      } catch (err) {
+        showToast(friendlyError(err), true);
+      }
+    };
+    actions.appendChild(publishBtn);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "btn-small btn-danger";
+    deleteBtn.textContent = "Supprimer";
+    deleteBtn.onclick = async (e) => {
+      e.stopPropagation();
+      if (!confirm(`Supprimer définitivement le titre « ${title.name} » ?`)) return;
+      try {
+        await deleteTitle(title.id);
+        if (editingTitleId === title.id) cancelEditTitle();
+        showToast("Titre supprimé.");
+      } catch (err) {
+        showToast(friendlyError(err), true);
+      }
+    };
+    actions.appendChild(deleteBtn);
+
+    row.appendChild(actions);
+    list.appendChild(row);
+  });
+}
+
+function startEditTitle(title) {
+  editingTitleId = title.id;
+  $("#admin-title-name").value = title.name;
+  $("#admin-title-submit").textContent = "Enregistrer les modifications";
+  $("#admin-title-cancel").style.display = "";
+  renderTitleManageList();
+  $("#form-admin-title")?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+function cancelEditTitle() {
+  editingTitleId = null;
+  $("#form-admin-title")?.reset();
+  $("#admin-title-submit").textContent = "Créer le titre";
+  $("#admin-title-cancel").style.display = "none";
+  renderTitleManageList();
+}
+
+async function handleAdminTitleSubmit(e) {
+  e.preventDefault();
+  const name = $("#admin-title-name").value.trim();
+  if (!name) {
+    showToast("Donne un nom au titre.", true);
+    return;
+  }
+  try {
+    if (editingTitleId) {
+      await updateTitle(editingTitleId, { name });
+      showToast("Titre modifié !");
+    } else {
+      await createTitle({ name });
+      showToast("Titre créé !");
+    }
+    cancelEditTitle();
   } catch (err) {
     showToast(friendlyError(err), true);
   }
@@ -1728,6 +1998,8 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#admin-profile-bg-cancel")?.addEventListener("click", cancelEditProfileBg);
   $("#admin-profile-bg-file")?.addEventListener("change", handleProfileBgFileChosen);
   $("#btn-download-profile-bg-template")?.addEventListener("click", downloadProfileBgTemplate);
+  $("#form-admin-title")?.addEventListener("submit", handleAdminTitleSubmit);
+  $("#admin-title-cancel")?.addEventListener("click", cancelEditTitle);
   $("#form-admin-theme")?.addEventListener("submit", handleAdminThemeSubmit);
   $("#admin-theme-cancel")?.addEventListener("click", cancelEditTheme);
   $("#admin-theme-bg-file")?.addEventListener("change", handleThemeBgFileChosen);
@@ -1749,6 +2021,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (profile && $("#view-settings")?.classList.contains("active")) {
       renderDecorationsGrid(profile);
       renderProfileBgGrid(profile);
+      renderTitlesGrid(profile);
       renderThemesGrid(profile);
       renderTagsGrid(profile);
     }

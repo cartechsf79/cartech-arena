@@ -8,7 +8,7 @@
 import { doc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 import { db } from "./firebase-init.js";
-import { $, renderAvatar, openPlayerProfileModal } from "./app.js";
+import { $, renderAvatar, openPlayerProfileModal, titleBadgeHtml } from "./app.js";
 
 const usersCol = collection(db, "users");
 const dailySessionRef = doc(db, "dailySession", "current");
@@ -93,7 +93,7 @@ function render() {
     row.innerHTML = `
       <span class="home-player-dot"></span>
       <div class="dd-row-avatar" data-avatar="${p.id}"></div>
-      <div class="dd-row-name">${escapeHtml(p.pseudo || "?")}<span class="dd-pill home-player-status-label">${statusLabel(p.status)}</span></div>
+      <div class="dd-row-name">${escapeHtml(p.pseudo || "?")}<span class="dd-pill home-player-status-label">${statusLabel(p.status)}</span>${titleBadgeHtml(p)}</div>
       <button class="btn-mini btn-mini-ghost" type="button" data-uid="${p.id}">Voir le profil</button>
     `;
     container.appendChild(row);
@@ -148,8 +148,13 @@ export function startHomePlayersListener() {
   });
   unsubEvents = onSnapshot(eventsCol, (snap) => {
     const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    const open = all.find((e) => e.status !== "termine") || null;
-    const newId = open ? open.id : null;
+    // Depuis le calendrier des événements à venir (Task #28), plusieurs
+    // événements peuvent coexister en statut "inscription" (programmés à
+    // l'avance) — seul celui réellement "en_cours" (manches en train de se
+    // jouer, au plus un à la fois) a des matchs à écouter ici pour calculer
+    // le statut "en combat".
+    const running = all.find((e) => e.status === "en_cours") || null;
+    const newId = running ? running.id : null;
     if (newId !== activeEventId) {
       activeEventId = newId;
       attachEventMatchesListener();

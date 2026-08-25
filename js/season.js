@@ -46,6 +46,7 @@ const seasonsCol = collection(db, "seasons");
 const tagsCol = collection(db, "tags");
 const usersCol = collection(db, "users");
 const duelsCol = collection(db, "dailySession", "current", "duels");
+const pointAdjustmentsCol = collection(db, "pointAdjustments");
 
 const WIN_POINTS = 3;
 const LOSS_POINTS = 1;
@@ -111,12 +112,16 @@ export function getActiveSeason(seasons, todayStr = localDateStr()) {
 // = { [nomDuJeu]: { type, value } }, un jeu sans condition configurée ne
 // contribue simplement à aucun point cumulé pour ce duel-là (ni pour l'un ni
 // pour l'autre joueur).
-export function computeSeasonStandings(duels, season, gameWinConditions = {}) {
+export function computeSeasonStandings(duels, season, gameWinConditions = {}, adjustments = []) {
   const standings = {}; // uid -> { points, wins, losses, matches, pointsCumules }
   const dayPoints = {}; // uid -> { "YYYY-MM-DD": pointsBruts }
 
-  function bump(uid, won, dateStr) {
+  function ensure(uid) {
     if (!standings[uid]) standings[uid] = { points: 0, wins: 0, losses: 0, matches: 0, pointsCumules: 0 };
+  }
+
+  function bump(uid, won, dateStr) {
+    ensure(uid);
     if (!dayPoints[uid]) dayPoints[uid] = {};
     standings[uid].matches += 1;
     if (won) standings[uid].wins += 1;
@@ -160,9 +165,23 @@ export function computeSeasonStandings(duels, season, gameWinConditions = {}) {
     }
   });
 
+  // Ajustements manuels de points par l'organisateur, rattachés à CETTE
+  // saison au moment où ils ont été accordés (voir addPointAdjustment) — pas
+  // plafonnés par jour (le plafond ne s'applique qu'aux points gagnés via un
+  // duel), et ne comptent ni dans les matchs/victoires/défaites ni dans les
+  // points cumulés (qui restent, eux, strictement dérivés des duels joués).
+  // Un joueur qui n'a encore joué aucun duel cette saison mais a reçu un
+  // bonus manuel apparaît quand même dans le classement, à 0 match.
+  const seasonAdjustments = {};
+  (adjustments || []).forEach((a) => {
+    if (a.seasonId !== season.id) return;
+    ensure(a.uid);
+    seasonAdjustments[a.uid] = (seasonAdjustments[a.uid] || 0) + (Number(a.amount) || 0);
+  });
+
   Object.keys(standings).forEach((uid) => {
     const capped = Object.values(dayPoints[uid] || {}).reduce((sum, raw) => sum + Math.min(raw, MAX_POINTS_PER_DAY), 0);
-    standings[uid].points = capped;
+    standings[uid].points = capped + (seasonAdjustments[uid] || 0);
     standings[uid].pointsCumules = Math.round(standings[uid].pointsCumules);
   });
 
@@ -226,7 +245,7 @@ export function buildLeaderboardRows(usersAll, standings) {
 // computeSeasonStandings, mais pour un seul uid — réutilisé à la fois pour
 // le total "à vie" (somme sur toutes les saisons) et pour le sous-total de
 // la saison active).
-function seasonPointsForUid(duels, season, uid) {
+function seasonPointsForUid(duels, season, uid, adjustments = []) {
   const dayPoints = {};
   (duels || []).forEach((d) => {
     if (d.status !== "termine" || !d.resolvedAt) return;
@@ -239,7 +258,11 @@ function seasonPointsForUid(duels, season, uid) {
     else return;
     dayPoints[dateStr] = (dayPoints[dateStr] || 0) + (won ? WIN_POINTS : LOSS_POINTS);
   });
-  return Object.values(dayPoints).reduce((sum, raw) => sum + Math.min(raw, MAX_POINTS_PER_DAY), 0);
+  const duelPoints = Object.values(dayPoints).reduce((sum, raw) => sum + Math.min(raw, MAX_POINTS_PER_DAY), 0);
+  const adjPoints = (adjustments || [])
+    .filter((a) => a.uid === uid && a.seasonId === season.id)
+    .reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
+  return duelPoints + adjPoints;
 }
 
 // Points ET victoires/défaites d'UN joueur sur UNE saison donnée — variante
@@ -247,7 +270,7 @@ function seasonPointsForUid(duels, season, uid) {
 // défaites (jamais plafonné, contrairement aux points). Utilisée uniquement
 // pour la saison ACTIVE (voir computeCareerStats) : les saisons passées
 // n'ont besoin que du sous-total de points pour le total "à vie".
-function seasonStatsForUid(duels, season, uid) {
+function seasonStatsForUid(duels, season, uid, adjustments = []) {
   let wins = 0;
   let losses = 0;
   const dayPoints = {};
@@ -264,11 +287,14 @@ function seasonStatsForUid(duels, season, uid) {
     else losses += 1;
     dayPoints[dateStr] = (dayPoints[dateStr] || 0) + (won ? WIN_POINTS : LOSS_POINTS);
   });
-  const points = Object.values(dayPoints).reduce((sum, raw) => sum + Math.min(raw, MAX_POINTS_PER_DAY), 0);
-  return { points, wins, losses };
+  const duelPoints = Object.values(dayPoints).reduce((sum, raw) => sum + Math.min(raw, MAX_POINTS_PER_DAY), 0);
+  const adjPoints = (adjustments || [])
+    .filter((a) => a.uid === uid && a.seasonId === season.id)
+    .reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
+  return { points: duelPoints + adjPoints, wins, losses };
 }
 
-export function computeCareerStats(duels, seasons, uid) {
+export function computeCareerStats(duels, seasons, uid, adjustments = []) {
   let lifetimeWins = 0;
   let lifetimeLosses = 0;
   (duels || []).forEach((d) => {
@@ -282,9 +308,21 @@ export function computeCareerStats(duels, seasons, uid) {
     }
   });
 
-  const lifetimePoints = (seasons || []).reduce((sum, s) => sum + seasonPointsForUid(duels, s, uid), 0);
+  const seasonsPoints = (seasons || []).reduce((sum, s) => sum + seasonPointsForUid(duels, s, uid, adjustments), 0);
+  // Un ajustement manuel compte TOUJOURS dans le total à vie, même ceux
+  // accordés hors de toute saison active (seasonId=null, ou saison depuis
+  // supprimée) — contrairement à un duel joué hors saison, qui ne rapporte
+  // aucun point à vie (règle volontaire) : un bonus donné explicitement par
+  // l'organisateur, lui, doit toujours se retrouver dans le total du joueur.
+  // (Les ajustements rattachés à une saison existante sont déjà comptés
+  // ci-dessus via seasonPointsForUid — on ne les rajoute pas une 2e fois.)
+  const adjustmentsOutsideSeason = (adjustments || [])
+    .filter((a) => a.uid === uid && !(seasons || []).some((s) => s.id === a.seasonId))
+    .reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
+  const lifetimePoints = seasonsPoints + adjustmentsOutsideSeason;
+
   const active = getActiveSeason(seasons || []);
-  const currentSeason = active ? seasonStatsForUid(duels, active, uid) : { points: 0, wins: 0, losses: 0 };
+  const currentSeason = active ? seasonStatsForUid(duels, active, uid, adjustments) : { points: 0, wins: 0, losses: 0 };
 
   return {
     lifetimePoints,
@@ -334,10 +372,27 @@ export async function fetchHeadToHead(uidA, uidB) {
 // utilisée pour une fiche profil consultée ponctuellement (recherche
 // organisateur, popup "Voir le profil" d'un autre joueur).
 export async function fetchCareerStats(uid) {
-  const [duelsSnap, seasonsSnap] = await Promise.all([getDocs(duelsCol), getDocs(seasonsCol)]);
+  const [duelsSnap, seasonsSnap, adjustmentsSnap] = await Promise.all([
+    getDocs(duelsCol),
+    getDocs(seasonsCol),
+    getDocs(pointAdjustmentsCol),
+  ]);
   const duels = duelsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
   const seasonsList = seasonsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  return computeCareerStats(duels, seasonsList, uid);
+  const adjustmentsList = adjustmentsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  return computeCareerStats(duels, seasonsList, uid, adjustmentsList);
+}
+
+// Historique des ajustements manuels d'UN joueur précis, du plus récent au
+// plus ancien — utilisé par le panneau organisateur "Gérer ce joueur"
+// (settings.js) pour afficher/permettre de supprimer les bonus déjà
+// accordés à ce joueur.
+export async function fetchAdjustmentsForUid(uid) {
+  const snap = await getDocs(pointAdjustmentsCol);
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((a) => a.uid === uid)
+    .sort((a, b) => toDate(b.createdAt) - toDate(a.createdAt));
 }
 
 // ---------------------------------------------------------------------------
@@ -346,6 +401,7 @@ export async function fetchCareerStats(uid) {
 let seasons = []; // toutes les saisons (passées/actuelle/futures)
 let duels = [];
 let usersAll = [];
+let adjustments = []; // tous les ajustements manuels de points (heavy listening, écran Saison)
 let bannerListening = false;
 let bannerUnsub = null;
 let heavyListening = false;
@@ -408,8 +464,10 @@ export function stopSeasonBannerListener() {
 // est ouvert).
 // ---------------------------------------------------------------------------
 let careerDuels = [];
+let careerAdjustments = [];
 let careerListening = false;
 let careerUnsub = null;
+let careerAdjustmentsUnsub = null;
 
 function renderCareerStats() {
   const uid = getCurrentUid();
@@ -418,7 +476,7 @@ function renderCareerStats() {
   const elLosses = $("#stat-losses");
   const elSeason = $("#stat-season-points");
   if (!uid || (!elPoints && !elWins && !elLosses && !elSeason)) return;
-  const stats = computeCareerStats(careerDuels, seasons, uid);
+  const stats = computeCareerStats(careerDuels, seasons, uid, careerAdjustments);
   if (elPoints) elPoints.textContent = stats.lifetimePoints;
   if (elWins) elWins.textContent = stats.lifetimeWins;
   if (elLosses) elLosses.textContent = stats.lifetimeLosses;
@@ -432,11 +490,18 @@ export function startCareerStatsListener() {
     careerDuels = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     renderCareerStats();
   });
+  careerAdjustmentsUnsub = onSnapshot(pointAdjustmentsCol, (snap) => {
+    careerAdjustments = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    renderCareerStats();
+  });
 }
 export function stopCareerStatsListener() {
   careerUnsub?.();
   careerUnsub = null;
+  careerAdjustmentsUnsub?.();
+  careerAdjustmentsUnsub = null;
   careerDuels = [];
+  careerAdjustments = [];
   careerListening = false;
 }
 
@@ -463,6 +528,31 @@ async function createSeason(startDate, endDate) {
 
 async function deleteSeason(seasonId) {
   await deleteDoc(doc(seasonsCol, seasonId));
+}
+
+// ---------------------------------------------------------------------------
+// Points bonus manuels — l'organisateur peut créditer (ou retirer, montant
+// négatif) des points à un joueur, en dehors de tout duel. Rattaché à la
+// saison active AU MOMENT de l'ajout (seasonId=null si aucune saison n'est
+// active à cet instant) : voir computeCareerStats/computeSeasonStandings
+// pour comment cet id est ensuite utilisé pour le total à vie et le
+// classement de saison. Jamais plafonné par MAX_POINTS_PER_DAY (ce plafond
+// ne s'applique qu'aux points gagnés via un duel du jour).
+// ---------------------------------------------------------------------------
+export async function addPointAdjustment(uid, amount, reason) {
+  const active = getActiveSeason(seasons);
+  await addDoc(pointAdjustmentsCol, {
+    uid,
+    amount,
+    reason: reason || "",
+    seasonId: active ? active.id : null,
+    createdBy: getCurrentUid(),
+    createdAt: serverTimestamp(),
+  });
+}
+
+export async function deletePointAdjustment(adjustmentId) {
+  await deleteDoc(doc(pointAdjustmentsCol, adjustmentId));
 }
 
 // ---------------------------------------------------------------------------
@@ -578,7 +668,7 @@ function renderPlayerArea() {
   }
 
   const gameWinConditions = buildGameWinConditionsMap();
-  const standings = computeSeasonStandings(duels, active, gameWinConditions);
+  const standings = computeSeasonStandings(duels, active, gameWinConditions, adjustments);
   const rows = buildLeaderboardRows(usersAll, standings);
   const myUid = getCurrentUid();
   const myIndex = rows.findIndex((r) => r.id === myUid);
@@ -651,6 +741,12 @@ function startHeavyListening() {
       render();
     })
   );
+  heavyUnsubs.push(
+    onSnapshot(pointAdjustmentsCol, (snap) => {
+      adjustments = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      render();
+    })
+  );
 }
 function stopHeavyListening() {
   heavyUnsubs.forEach((u) => u());
@@ -658,6 +754,7 @@ function stopHeavyListening() {
   heavyListening = false;
   duels = [];
   usersAll = [];
+  adjustments = [];
 }
 
 export function showSeasonScreen() {
