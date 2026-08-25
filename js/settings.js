@@ -67,10 +67,15 @@ import {
   getGameWinCondition,
   setGameWinCondition,
   winConditionLabel,
+  getGameElements,
+  addGameElement,
+  removeGameElement,
+  compressGameElementImage,
   downloadDecorationTemplate,
   downloadThemeBgTemplate,
   downloadTagEmojiTemplate,
   downloadProfileBgTemplate,
+  downloadGameElementTemplate,
 } from "./live-catalog.js";
 import { fetchCareerStats, fetchHeadToHead } from "./season.js";
 
@@ -1468,12 +1473,114 @@ function buildGameWinConditionForm(name, wc) {
   return form;
 }
 
+// Section "Éléments" d'un jeu (ex. les couleurs d'encre à Lorcana) — un
+// joueur devra en cocher un ou plusieurs pour déclarer son deck au moment
+// de jouer à ce jeu (voir daily-duel.js/event.js), UNIQUEMENT si au moins un
+// élément est configuré ici (sinon rien n'est demandé, ça reste facultatif).
+let pendingElementImageDataUrl = null;
+
+function buildGameElementsSection(name) {
+  const wrap = document.createElement("div");
+  wrap.className = "admin-game-elements";
+
+  const label = document.createElement("div");
+  label.className = "manage-grid-label";
+  label.textContent = "🧩 Éléments (couleurs/types de deck)";
+  wrap.appendChild(label);
+
+  const elements = getGameElements(name);
+  if (elements.length) {
+    const grid = document.createElement("div");
+    grid.className = "chip-grid";
+    elements.forEach((el) => {
+      const chip = document.createElement("div");
+      chip.className = "chip";
+      chip.innerHTML = `
+        <div class="chip-swatch" style="background-image:url('${el.imageDataUrl}');background-size:cover;background-position:center;"></div>
+        <div class="chip-label">${escapeHtml(el.name)}</div>
+      `;
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "btn-small";
+      removeBtn.textContent = "Retirer";
+      removeBtn.onclick = async (e) => {
+        e.stopPropagation();
+        try {
+          await removeGameElement(name, el.id);
+          showToast("Élément retiré.");
+          renderGameManageList();
+        } catch (err) {
+          showToast(friendlyError(err), true);
+        }
+      };
+      chip.appendChild(removeBtn);
+      grid.appendChild(chip);
+    });
+    wrap.appendChild(grid);
+  } else {
+    const note = document.createElement("p");
+    note.className = "settings-note";
+    note.textContent = "Aucun élément configuré pour l'instant — tant qu'il n'y en a aucun, les joueurs n'ont rien à déclarer pour ce jeu.";
+    wrap.appendChild(note);
+  }
+
+  pendingElementImageDataUrl = null;
+  const form = document.createElement("form");
+  form.className = "admin-game-element-form";
+  form.innerHTML = `
+    <label>Nom de l'élément</label>
+    <input type="text" class="admin-element-name" maxlength="24" required>
+    <label>Icône (image)</label>
+    <input type="file" class="admin-element-file" accept="image/*">
+    <img class="admin-element-preview" alt="Aperçu de l'élément" style="display:none;max-width:64px;max-height:64px;border-radius:50%;margin:6px 0;">
+    <button type="button" class="btn btn-ghost admin-element-template-btn">⬇️ Télécharger le gabarit (512×512)</button>
+    <button type="submit" class="btn btn-small btn-primary">Ajouter l'élément</button>
+  `;
+  const fileInput = form.querySelector(".admin-element-file");
+  const preview = form.querySelector(".admin-element-preview");
+  fileInput.addEventListener("change", async () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    try {
+      pendingElementImageDataUrl = await compressGameElementImage(file);
+      preview.src = pendingElementImageDataUrl;
+      preview.style.display = "";
+    } catch (err) {
+      showToast(friendlyError(err), true);
+    }
+  });
+  form.querySelector(".admin-element-template-btn").addEventListener("click", downloadGameElementTemplate);
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const elName = form.querySelector(".admin-element-name").value.trim();
+    if (!elName) {
+      showToast("Donne un nom à l'élément.", true);
+      return;
+    }
+    if (!pendingElementImageDataUrl) {
+      showToast("Choisis une icône pour cet élément.", true);
+      return;
+    }
+    try {
+      await addGameElement(name, { name: elName, imageDataUrl: pendingElementImageDataUrl });
+      showToast("Élément ajouté !");
+      renderGameManageList();
+    } catch (err) {
+      showToast(friendlyError(err), true);
+    }
+  });
+  wrap.appendChild(form);
+
+  return wrap;
+}
+
 function renderGameManageList() {
   const list = $("#admin-game-list");
   if (!list) return;
   list.innerHTML = "";
   getAllGames().forEach((name) => {
     const wc = getGameWinCondition(name);
+    const elementCount = getGameElements(name).length;
     const row = document.createElement("div");
     row.className = "admin-manage-row";
 
@@ -1481,7 +1588,7 @@ function renderGameManageList() {
     chip.className = "chip" + (editingGameName === name ? " active" : "");
     chip.innerHTML = `
       <div class="chip-label">${escapeHtml(name)}</div>
-      <div class="chip-sub">${wc ? escapeHtml(winConditionLabel(wc)) : "Aucune condition de victoire définie"}</div>
+      <div class="chip-sub">${wc ? escapeHtml(winConditionLabel(wc)) : "Aucune condition de victoire définie"} — ${elementCount ? `${elementCount} élément${elementCount > 1 ? "s" : ""}` : "aucun élément"}</div>
     `;
     chip.onclick = () => toggleEditGame(name);
     row.appendChild(chip);
@@ -1491,7 +1598,7 @@ function renderGameManageList() {
     const editBtn = document.createElement("button");
     editBtn.type = "button";
     editBtn.className = "btn-small";
-    editBtn.textContent = wc ? "Modifier la condition" : "Définir une condition";
+    editBtn.textContent = editingGameName === name ? "Fermer" : "Paramètres du jeu";
     editBtn.onclick = (e) => {
       e.stopPropagation();
       toggleEditGame(name);
@@ -1502,6 +1609,7 @@ function renderGameManageList() {
     list.appendChild(row);
     if (editingGameName === name) {
       list.appendChild(buildGameWinConditionForm(name, wc));
+      list.appendChild(buildGameElementsSection(name));
     }
   });
 }

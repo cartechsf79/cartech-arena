@@ -1,26 +1,69 @@
-# Car'Tech Arena — v8.6
+# Car'Tech Arena — v8.9
 
-Cette version ajoute deux améliorations demandées après la v8.5. D'abord,
-ton compte **organisateur a maintenant toutes les décorations, tous les
-thèmes, tous les tags et tous les fonds de profil débloqués d'office** —
-tu peux tout essayer directement sur ton propre profil sans devoir
-d'abord te les attribuer toi-même depuis la recherche organisateur (les
-comptes joueurs ne sont pas concernés : ils doivent toujours recevoir
-chaque élément normalement). Ensuite, le **fond de profil s'affiche
-maintenant sur toute la zone du profil** — dans la popup "Voir le
-profil", ça couvre maintenant le titre, la carte ET le bouton "Gérer ce
-joueur", pas seulement une petite carte à l'intérieur ; pareil dans la
-fiche de recherche organisateur. Voir "Nouveau dans cette version —
-organisateur tout débloqué &amp; fond de profil sur toute la fenêtre"
-plus bas pour le détail complet.
+Cette version ajoute le **suivi par deck/archétype** : en plus du score,
+un joueur peut maintenant déclarer **quel deck il a joué** pour un duel
+(Duel du jour) ou un événement — via des **éléments** (couleurs/types de
+deck, ex. les couleurs d'encre à Lorcana) que tu configures toi-même,
+jeu par jeu, dans **Espace organisateur > Jeux**. Le deck déclaré reste
+**caché à l'adversaire** jusqu'à la fin du duel/événement (pour éviter
+le "contre" — préparer sa liste en fonction du deck adverse connu à
+l'avance), une règle appliquée **côté serveur** (règles Firestore), pas
+seulement à l'affichage. Voir "Nouveau dans cette version — suivi par
+deck/archétype (éléments de jeu)" plus bas pour le détail complet.
 
-**Pas de republication des règles Firestore nécessaire pour cette
-version** — seuls les fichiers du site changent. (Si tu avais eu le
-souci "un fond de profil créé n'apparaissait nulle part" juste après
-avoir mis la v8.5, c'était réglé en republiant à nouveau, en entier, le
-fichier de règles — rien à refaire ici si ça fonctionne déjà.)
+**Republication des règles Firestore nécessaire pour cette version**
+(deux nouvelles collections protégées : `decks` sous chaque duel, `deck`
+sous chaque participant d'événement) — voir "Mise à jour depuis une
+version précédente" plus bas.
+
+Les statistiques de victoire **par deck** (ex. "quel deck gagne le
+plus") ne sont pas encore calculées dans cette version — seule la
+déclaration/révélation du deck joué est en place pour l'instant.
 
 ---
+
+## Historique — v8.8
+
+Cette version réorganisait l'**Espace organisateur** : les 5 catégories
+(décorations, fonds de profil, thèmes, tags, jeux) étaient toutes
+regroupées dans une seule grande carte qui s'enchaînait sans séparation
+claire — chacune a maintenant **sa propre bulle bien distincte**
+(comme la carte "Joueurs" de l'écran d'accueil), avec son titre, sa
+liste et son formulaire de création, pour que ce soit plus lisible et
+plus facile à s'y retrouver.
+
+Pas de republication des règles Firestore n'était nécessaire pour cette
+version.
+
+## Historique — v8.7
+
+Cette version corrigeait le **gabarit téléchargeable du fond de
+profil** (Espace organisateur > Fonds de profil) : il était en format
+paysage (1200×700, plus large que haut), alors que le fond s'affiche en
+réalité derrière des zones plutôt **hautes** (toute la fiche d'accueil,
+toute la popup "Voir le profil" depuis la v8.6) — une image préparée
+avec l'ancien gabarit se retrouvait donc mal cadrée. Le nouveau gabarit
+est en **900×1200 (portrait)**, avec un rappel que la zone exactement
+visible varie un peu selon l'écran (accueil / popup / recherche), donc
+à garder l'essentiel de l'image bien centré.
+
+## Historique — v8.6
+
+Cette version ajoutait deux améliorations demandées après la v8.5.
+D'abord, le compte **organisateur avait toutes les décorations, tous les
+thèmes, tous les tags et tous les fonds de profil débloqués d'office** —
+pour pouvoir tout essayer directement sur son propre profil sans devoir
+d'abord se les attribuer via la recherche organisateur (les comptes
+joueurs ne sont pas concernés : ils doivent toujours recevoir chaque
+élément normalement). Ensuite, le **fond de profil s'affichait sur toute
+la zone du profil** — dans la popup "Voir le profil", ça couvrait le
+titre, la carte ET le bouton "Gérer ce joueur", pas seulement une petite
+carte à l'intérieur ; pareil dans la fiche de recherche organisateur.
+Voir "Nouveau dans cette version — organisateur tout débloqué & fond de
+profil sur toute la fenêtre" plus bas pour le détail complet.
+
+Pas de republication des règles Firestore n'était nécessaire pour cette
+version.
 
 ## Historique — v8.5
 
@@ -170,9 +213,11 @@ d'avoir à activer un mode payant.
    changes"). `js/firebase-config.js` contient déjà tes vraies clés et ton
    email organisateur, pas besoin d'y retoucher.
 
-2. **Republie les règles Firestore** (les règles n'ont pas changé depuis la
-   v8.5 — pas obligatoire pour la v8.6 elle-même — mais autant garder
-   l'habitude de les republier à chaque fois, pour être sûr que tout reste
+2. **Republie les règles Firestore** (règles modifiées pour la v8.9 —
+   deux nouvelles collections protégées pour cacher les decks déclarés
+   jusqu'à la fin du duel/événement, voir plus haut — cette étape est
+   **obligatoire** cette fois-ci ; garde de toute façon l'habitude de les
+   republier à chaque mise à jour, pour être sûr que tout reste
    synchronisé) : Firebase Console > Firestore Database > onglet "Règles"
    > sélectionne TOUT le contenu déjà présent et supprime-le d'abord >
    colle tout le contenu de `firestore.rules` (vérifie qu'il commence par
@@ -518,6 +563,55 @@ seule fois, sans jamais pouvoir toucher à un autre tag ou en retirer un —
 testé et vérifié qu'un joueur ne peut pas s'en servir pour s'attribuer un
 tag "récompense" normal.
 
+## Nouveau dans cette version — suivi par deck/archétype (éléments de jeu)
+
+### Configurer les éléments d'un jeu
+
+Dans **Espace organisateur > Jeux**, clique sur **"Paramètres du jeu"**
+sous n'importe quel jeu (y compris les 3 jeux de base : Pokémon TCG,
+Lorcana, One Piece Card Game) : en plus de la condition de victoire déjà
+existante, une nouvelle section **"🧩 Éléments"** apparaît tout en bas.
+Donne un nom à chaque élément (ex. les couleurs d'encre à Lorcana : Ambre,
+Améthyste...) et une petite icône (image), avec un **gabarit
+téléchargeable (512×512)** pour bien la préparer. Un élément ajouté
+apparaît immédiatement dans la liste, avec un bouton "Retirer".
+
+C'est **entièrement facultatif, jeu par jeu** : tant qu'aucun élément
+n'est configuré pour un jeu, rien ne change pour les joueurs de ce jeu.
+Dès qu'**au moins un élément** est configuré, en revanche, déclarer son
+deck devient **obligatoire** pour jouer à ce jeu (voir ci-dessous) — ça
+bloque la proposition/acceptation d'un duel ou l'inscription à un
+événement tant que ce n'est pas fait.
+
+### Déclarer son deck — Duel du jour
+
+Si le jeu choisi a des éléments configurés, un sélecteur apparaît dans le
+formulaire de proposition de duel (**et** dans la carte d'acceptation
+côté adversaire) : coche **un ou plusieurs** éléments (ex. un deck 2
+couleurs) pour représenter ton deck. **Les deux joueurs** doivent
+déclarer leur deck — celui qui propose ET celui qui accepte — sinon
+impossible d'envoyer la proposition / de l'accepter.
+
+### Déclarer son deck — Événement
+
+Même principe au moment de rejoindre un événement (bouton "Événement
+disponible") : si le jeu a des éléments configurés, un sélecteur
+apparaît avant de pouvoir confirmer l'inscription.
+
+### Caché jusqu'à la fin (anti-triche)
+
+Le deck déclaré par chacun reste **invisible à l'adversaire** tant que
+le duel n'est pas **terminé** (ou l'événement, pour un deck déclaré à
+l'inscription) — impossible de "scouter" le deck de l'adversaire à
+l'avance pour préparer un contre. Cette règle est appliquée **côté
+serveur** dans les règles Firestore (pas seulement cachée à l'affichage
+côté appli) : même en contournant l'interface, un joueur ne peut
+techniquement pas lire le deck d'un adversaire avant la fin. Une fois le
+duel terminé, une carte récapitulative apparaît automatiquement des deux
+côtés avec les deux decks révélés (et le résultat) ; pour un événement,
+les decks de tous les participants classés apparaissent dans
+**l'historique des événements** à côté du classement final.
+
 ## Nouveau dans cette version — condition de victoire par jeu et points cumulés
 
 ### Raccourci "Saison actuelle" depuis le Duel du jour
@@ -593,6 +687,27 @@ pour l'un ni pour l'autre joueur), et une performance qui dépasserait
 100% (ex. un score supérieur à la condition) est plafonnée à 100 pour ce
 match, pour ne pas avantager artificiellement un score disproportionné.
 
+## Corrigé dans cette version — gabarit du fond de profil (portrait)
+
+Le gabarit téléchargeable pour le fond de profil (Espace organisateur >
+Fonds de profil > "Télécharger le gabarit") était en 1200×700 (paysage),
+alors que le fond s'affiche derrière des zones plutôt hautes que larges
+(la fiche d'accueil, la popup "Voir le profil" en entier depuis la
+v8.6) : une image préparée avec l'ancien gabarit finissait mal cadrée
+(rognée sur les côtés). Le gabarit est maintenant en **900×1200
+(portrait)**. Comme le fond de profil s'affiche à trois endroits qui
+n'ont pas exactement la même forme (accueil, popup, recherche
+organisateur), le gabarit ne peut pas être parfaitement exact partout —
+le nouveau gabarit le rappelle directement dessus, et conseille de
+garder l'essentiel de l'image bien centré, avec de la marge tout
+autour, pour que ça reste correct où que ce soit affiché.
+
+Si tu avais déjà créé un fond de profil avec l'ancien gabarit (paysage),
+rien ne casse : il reste utilisable tel quel, juste peut-être moins bien
+cadré. Tu peux le remplacer (bouton "Modifier" dans la liste de gestion)
+avec une nouvelle image préparée sur le nouveau gabarit si tu veux
+l'améliorer.
+
 ## Nouveau dans cette version — organisateur tout débloqué & fond de profil sur toute la fenêtre
 
 ### L'organisateur a tout débloqué d'office
@@ -639,9 +754,10 @@ façon.
 
 Pour en créer un (Espace organisateur > Fonds de profil) : donne-lui un
 nom, importe une image (recadrée/compressée automatiquement), ou
-télécharge d'abord le **gabarit (1200×700)** pour composer l'image aux
-bonnes proportions dans ton logiciel préféré. Comme les décorations, un
-fond créé démarre "non publié" (visible seulement par toi le temps de le
+télécharge d'abord le **gabarit (900×1200, portrait — voir v8.7)** pour
+composer l'image aux bonnes proportions dans ton logiciel préféré. Comme
+les décorations, un fond créé démarre "non publié" (visible seulement par
+toi le temps de le
 préparer) — publie-le pour qu'il devienne attribuable à un joueur.
 
 ### Face-à-face entre toi et le joueur consulté
@@ -848,3 +964,7 @@ décorations/thèmes/tags).
   car déjà référencé par l'historique des matchs et des événements passés.
 - La mise à jour en direct du profil d'un joueur déjà connecté quand
   l'organisateur lui attribue quelque chose (voir la limite ci-dessus).
+- Les **statistiques de victoire par deck/archétype** (ex. "quel deck
+  gagne le plus", taux de victoire par élément) — pour l'instant, seule
+  la déclaration/révélation du deck joué à chaque duel/événement est en
+  place ; le calcul de stats agrégées par deck n'est pas encore fait.

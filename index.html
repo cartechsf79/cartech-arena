@@ -255,94 +255,106 @@
         <h1 class="settings-title">🛡️ Espace organisateur</h1>
       </div>
 
-      <div class="card settings-section" id="section-organizer-catalog">
-        <p class="settings-note">Crée et modifie les décorations, thèmes, tags et jeux. Pour attribuer une décoration/un thème/un tag à un joueur, utilise Paramètres &gt; « Voir le profil d'un joueur ».</p>
+      <div id="section-organizer-catalog">
+        <div class="card settings-section">
+          <p class="settings-note" style="margin:0;">Crée et modifie les décorations, thèmes, tags et jeux — chaque catégorie a sa propre bulle ci-dessous. Pour attribuer une décoration/un thème/un tag à un joueur, utilise Paramètres &gt; « Voir le profil d'un joueur ».</p>
+        </div>
 
-        <div class="manage-grid-label">Décorations de photo de profil</div>
-        <div class="chip-grid" id="admin-deco-list"></div>
-        <form id="form-admin-deco">
-          <label for="admin-deco-name">Nom</label>
-          <input type="text" id="admin-deco-name" maxlength="30" required>
-          <label for="admin-deco-type">Type</label>
-          <select id="admin-deco-type">
-            <option value="static">Statique (image)</option>
-            <option value="animated">Animée (gif)</option>
-          </select>
-          <label for="admin-deco-file">Image (nouvelle décoration, ou remplacement lors d'une modification)</label>
-          <input type="file" id="admin-deco-file" accept="image/*">
-          <button class="btn btn-ghost" type="button" id="btn-download-deco-template">⬇️ Télécharger le gabarit (1024×1024)</button>
-          <p class="settings-note">Le gabarit montre exactement où se trouve la photo de profil — importe-le dans ton logiciel d'image, dessine ta décoration autour du carré, puis importe le résultat ici. Une décoration créée ici démarre « non publiée » (visible seulement par toi) : utilise le bouton « Publier » dans la liste ci-dessus une fois prête.</p>
-          <button class="btn btn-primary" type="submit" id="admin-deco-submit">Créer la décoration</button>
-          <button class="btn btn-ghost" type="button" id="admin-deco-cancel" style="display:none;">Annuler la modification</button>
-        </form>
+        <div class="card settings-section">
+          <h3>🖼️ Décorations de photo de profil</h3>
+          <div class="chip-grid" id="admin-deco-list"></div>
+          <form id="form-admin-deco">
+            <label for="admin-deco-name">Nom</label>
+            <input type="text" id="admin-deco-name" maxlength="30" required>
+            <label for="admin-deco-type">Type</label>
+            <select id="admin-deco-type">
+              <option value="static">Statique (image)</option>
+              <option value="animated">Animée (gif)</option>
+            </select>
+            <label for="admin-deco-file">Image (nouvelle décoration, ou remplacement lors d'une modification)</label>
+            <input type="file" id="admin-deco-file" accept="image/*">
+            <button class="btn btn-ghost" type="button" id="btn-download-deco-template">⬇️ Télécharger le gabarit (1024×1024)</button>
+            <p class="settings-note">Le gabarit montre exactement où se trouve la photo de profil — importe-le dans ton logiciel d'image, dessine ta décoration autour du carré, puis importe le résultat ici. Une décoration créée ici démarre « non publiée » (visible seulement par toi) : utilise le bouton « Publier » dans la liste ci-dessus une fois prête.</p>
+            <button class="btn btn-primary" type="submit" id="admin-deco-submit">Créer la décoration</button>
+            <button class="btn btn-ghost" type="button" id="admin-deco-cancel" style="display:none;">Annuler la modification</button>
+          </form>
+        </div>
 
-        <div class="manage-grid-label">Fonds de profil</div>
-        <div class="chip-grid" id="admin-profile-bg-list"></div>
-        <form id="form-admin-profile-bg">
-          <label for="admin-profile-bg-name">Nom</label>
-          <input type="text" id="admin-profile-bg-name" maxlength="30" required>
-          <label for="admin-profile-bg-file">Image (nouveau fond, ou remplacement lors d'une modification)</label>
-          <input type="file" id="admin-profile-bg-file" accept="image/*">
-          <img id="admin-profile-bg-preview" alt="Aperçu du fond de profil" style="display:none;max-width:100%;border-radius:10px;margin:6px 0;">
-          <button class="btn btn-ghost" type="button" id="btn-download-profile-bg-template">⬇️ Télécharger le gabarit (1200×700)</button>
-          <p class="settings-note">Le gabarit indique le format conseillé et la zone toujours visible — modifie-le dans ton logiciel d'image puis importe le résultat ici. Un fond créé ici démarre « non publié » (visible seulement par toi) : utilise le bouton « Publier » dans la liste ci-dessus une fois prêt.</p>
-          <button class="btn btn-primary" type="submit" id="admin-profile-bg-submit">Créer le fond de profil</button>
-          <button class="btn btn-ghost" type="button" id="admin-profile-bg-cancel" style="display:none;">Annuler la modification</button>
-        </form>
+        <div class="card settings-section">
+          <h3>🏞️ Fonds de profil</h3>
+          <div class="chip-grid" id="admin-profile-bg-list"></div>
+          <form id="form-admin-profile-bg">
+            <label for="admin-profile-bg-name">Nom</label>
+            <input type="text" id="admin-profile-bg-name" maxlength="30" required>
+            <label for="admin-profile-bg-file">Image (nouveau fond, ou remplacement lors d'une modification)</label>
+            <input type="file" id="admin-profile-bg-file" accept="image/*">
+            <img id="admin-profile-bg-preview" alt="Aperçu du fond de profil" style="display:none;max-width:100%;border-radius:10px;margin:6px 0;">
+            <button class="btn btn-ghost" type="button" id="btn-download-profile-bg-template">⬇️ Télécharger le gabarit (900×1200, portrait)</button>
+            <p class="settings-note">Le gabarit indique le format conseillé (plus haut que large) et un repère de zone visible — garde surtout l'essentiel de l'image bien centré, car la zone exactement visible varie un peu selon l'écran (accueil, popup « Voir le profil », recherche). Modifie le gabarit dans ton logiciel d'image puis importe le résultat ici. Un fond créé ici démarre « non publié » (visible seulement par toi) : utilise le bouton « Publier » dans la liste ci-dessus une fois prêt.</p>
+            <button class="btn btn-primary" type="submit" id="admin-profile-bg-submit">Créer le fond de profil</button>
+            <button class="btn btn-ghost" type="button" id="admin-profile-bg-cancel" style="display:none;">Annuler la modification</button>
+          </form>
+        </div>
 
-        <div class="manage-grid-label">Thèmes personnalisés</div>
-        <div class="chip-grid" id="admin-theme-list"></div>
-        <form id="form-admin-theme">
-          <label for="admin-theme-name">Nom</label>
-          <input type="text" id="admin-theme-name" maxlength="30" required>
-          <div class="color-field-grid">
-            <label>Fond<input type="color" id="admin-theme-bg" value="#0f1117"></label>
-            <label>Fond secondaire<input type="color" id="admin-theme-bg2" value="#161a24"></label>
-            <label>Cartes<input type="color" id="admin-theme-panel" value="#1b202c"></label>
-            <label>Bordures<input type="color" id="admin-theme-panelborder" value="#2a3142"></label>
-            <label>Accent<input type="color" id="admin-theme-accent" value="#8b5cf6"></label>
-            <label>Accent 2<input type="color" id="admin-theme-accent2" value="#f5b942"></label>
-            <label>Texte<input type="color" id="admin-theme-text" value="#eef0f5"></label>
-            <label>Texte discret<input type="color" id="admin-theme-muted" value="#93a0b8"></label>
-          </div>
-          <label for="admin-theme-bg-file">Image de fond (facultative, en plus des couleurs ci-dessus)</label>
-          <input type="file" id="admin-theme-bg-file" accept="image/*">
-          <img id="admin-theme-bg-preview" alt="Aperçu du fond" style="display:none;max-width:100%;border-radius:10px;margin:6px 0;">
-          <button class="btn btn-ghost" type="button" id="admin-theme-bg-remove" style="display:none;">Retirer l'image de fond</button>
-          <button class="btn btn-ghost" type="button" id="btn-download-theme-bg-template">⬇️ Télécharger le gabarit (1080×1920)</button>
-          <p class="settings-note">Le gabarit indique le format conseillé et la zone souvent recouverte par l'interface — modifie-le dans ton logiciel d'image puis importe le résultat ici.</p>
-          <button class="btn btn-primary" type="submit" id="admin-theme-submit">Créer le thème</button>
-          <button class="btn btn-ghost" type="button" id="admin-theme-cancel" style="display:none;">Annuler la modification</button>
-        </form>
+        <div class="card settings-section">
+          <h3>🎨 Thèmes personnalisés</h3>
+          <div class="chip-grid" id="admin-theme-list"></div>
+          <form id="form-admin-theme">
+            <label for="admin-theme-name">Nom</label>
+            <input type="text" id="admin-theme-name" maxlength="30" required>
+            <div class="color-field-grid">
+              <label>Fond<input type="color" id="admin-theme-bg" value="#0f1117"></label>
+              <label>Fond secondaire<input type="color" id="admin-theme-bg2" value="#161a24"></label>
+              <label>Cartes<input type="color" id="admin-theme-panel" value="#1b202c"></label>
+              <label>Bordures<input type="color" id="admin-theme-panelborder" value="#2a3142"></label>
+              <label>Accent<input type="color" id="admin-theme-accent" value="#8b5cf6"></label>
+              <label>Accent 2<input type="color" id="admin-theme-accent2" value="#f5b942"></label>
+              <label>Texte<input type="color" id="admin-theme-text" value="#eef0f5"></label>
+              <label>Texte discret<input type="color" id="admin-theme-muted" value="#93a0b8"></label>
+            </div>
+            <label for="admin-theme-bg-file">Image de fond (facultative, en plus des couleurs ci-dessus)</label>
+            <input type="file" id="admin-theme-bg-file" accept="image/*">
+            <img id="admin-theme-bg-preview" alt="Aperçu du fond" style="display:none;max-width:100%;border-radius:10px;margin:6px 0;">
+            <button class="btn btn-ghost" type="button" id="admin-theme-bg-remove" style="display:none;">Retirer l'image de fond</button>
+            <button class="btn btn-ghost" type="button" id="btn-download-theme-bg-template">⬇️ Télécharger le gabarit (1080×1920)</button>
+            <p class="settings-note">Le gabarit indique le format conseillé et la zone souvent recouverte par l'interface — modifie-le dans ton logiciel d'image puis importe le résultat ici.</p>
+            <button class="btn btn-primary" type="submit" id="admin-theme-submit">Créer le thème</button>
+            <button class="btn btn-ghost" type="button" id="admin-theme-cancel" style="display:none;">Annuler la modification</button>
+          </form>
+        </div>
 
-        <div class="manage-grid-label">Tags de profil</div>
-        <div class="chip-grid" id="admin-tag-list"></div>
-        <form id="form-admin-tag">
-          <label for="admin-tag-name">Nom</label>
-          <input type="text" id="admin-tag-name" maxlength="24" required>
-          <label for="admin-tag-emoji">Emoji (optionnel)</label>
-          <input type="text" id="admin-tag-emoji" maxlength="8" placeholder="🏅">
-          <label for="admin-tag-emoji-file">Ou un emoji personnalisé importé par image (facultatif, prioritaire sur l'emoji ci-dessus)</label>
-          <input type="file" id="admin-tag-emoji-file" accept="image/*">
-          <img id="admin-tag-emoji-preview" alt="Aperçu de l'emoji" style="display:none;max-width:64px;max-height:64px;border-radius:50%;margin:6px 0;">
-          <button class="btn btn-ghost" type="button" id="admin-tag-emoji-remove" style="display:none;">Retirer l'image</button>
-          <button class="btn btn-ghost" type="button" id="btn-download-tag-emoji-template">⬇️ Télécharger le gabarit (512×512)</button>
-          <p class="settings-note">Le gabarit indique la zone visible (cercle) — l'icône s'affiche toute petite et ronde, les coins de l'image seront invisibles. Un gif animé fonctionne aussi (gardé tel quel, ~300 Ko max) — une image fixe est recadrée et compressée automatiquement.</p>
-          <label for="admin-tag-color">Couleur</label>
-          <input type="color" id="admin-tag-color" value="#8b5cf6">
-          <label class="checkbox-label"><input type="checkbox" id="admin-tag-default"> Disponible pour tout le monde dès la création du compte</label>
-          <button class="btn btn-primary" type="submit" id="admin-tag-submit">Créer le tag</button>
-          <button class="btn btn-ghost" type="button" id="admin-tag-cancel" style="display:none;">Annuler la modification</button>
-        </form>
+        <div class="card settings-section">
+          <h3>🏷️ Tags de profil</h3>
+          <div class="chip-grid" id="admin-tag-list"></div>
+          <form id="form-admin-tag">
+            <label for="admin-tag-name">Nom</label>
+            <input type="text" id="admin-tag-name" maxlength="24" required>
+            <label for="admin-tag-emoji">Emoji (optionnel)</label>
+            <input type="text" id="admin-tag-emoji" maxlength="8" placeholder="🏅">
+            <label for="admin-tag-emoji-file">Ou un emoji personnalisé importé par image (facultatif, prioritaire sur l'emoji ci-dessus)</label>
+            <input type="file" id="admin-tag-emoji-file" accept="image/*">
+            <img id="admin-tag-emoji-preview" alt="Aperçu de l'emoji" style="display:none;max-width:64px;max-height:64px;border-radius:50%;margin:6px 0;">
+            <button class="btn btn-ghost" type="button" id="admin-tag-emoji-remove" style="display:none;">Retirer l'image</button>
+            <button class="btn btn-ghost" type="button" id="btn-download-tag-emoji-template">⬇️ Télécharger le gabarit (512×512)</button>
+            <p class="settings-note">Le gabarit indique la zone visible (cercle) — l'icône s'affiche toute petite et ronde, les coins de l'image seront invisibles. Un gif animé fonctionne aussi (gardé tel quel, ~300 Ko max) — une image fixe est recadrée et compressée automatiquement.</p>
+            <label for="admin-tag-color">Couleur</label>
+            <input type="color" id="admin-tag-color" value="#8b5cf6">
+            <label class="checkbox-label"><input type="checkbox" id="admin-tag-default"> Disponible pour tout le monde dès la création du compte</label>
+            <button class="btn btn-primary" type="submit" id="admin-tag-submit">Créer le tag</button>
+            <button class="btn btn-ghost" type="button" id="admin-tag-cancel" style="display:none;">Annuler la modification</button>
+          </form>
+        </div>
 
-        <div class="manage-grid-label">Jeux (TCG)</div>
-        <p class="settings-note">Les jeux ci-dessous apparaissent dans les choix du Duel du jour et de l'Événement.</p>
-        <div class="chip-grid" id="admin-game-list"></div>
-        <form id="form-admin-game">
-          <label for="admin-game-name">Nom du jeu</label>
-          <input type="text" id="admin-game-name" maxlength="40" required placeholder="Ex : Digimon Card Game">
-          <button class="btn btn-primary" type="submit" id="admin-game-submit">Ajouter le jeu</button>
-        </form>
+        <div class="card settings-section">
+          <h3>🎴 Jeux (TCG)</h3>
+          <p class="settings-note">Les jeux ci-dessous apparaissent dans les choix du Duel du jour et de l'Événement.</p>
+          <div class="chip-grid" id="admin-game-list"></div>
+          <form id="form-admin-game">
+            <label for="admin-game-name">Nom du jeu</label>
+            <input type="text" id="admin-game-name" maxlength="40" required placeholder="Ex : Digimon Card Game">
+            <button class="btn btn-primary" type="submit" id="admin-game-submit">Ajouter le jeu</button>
+          </form>
+        </div>
       </div>
     </div>
   </div>

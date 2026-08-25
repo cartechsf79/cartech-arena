@@ -7,6 +7,7 @@
 import {
   doc,
   setDoc,
+  getDoc,
   updateDoc,
   addDoc,
   collection,
@@ -26,7 +27,7 @@ import {
   hideAllViews,
 } from "./app.js";
 import { FORMATS, findFormat } from "./catalog.js";
-import { getAllGames } from "./live-catalog.js";
+import { getAllGames, getGameElements, elementsPickerHtml, wireElementsPicker, elementIconsHtml } from "./live-catalog.js";
 
 async function withErrorToast(fn) {
   try {
@@ -57,6 +58,8 @@ let unsubParticipants = null;
 let unsubMatches = null;
 let listening = false;
 let countdownInterval = null;
+let showJoinForm = false;
+let joinSelectedElementIds = [];
 
 function isOrganizer() {
   return getCurrentProfile()?.role === "organisateur";
@@ -350,7 +353,7 @@ async function finalizeEvent() {
 // ---------------------------------------------------------------------------
 // Actions — joueur
 // ---------------------------------------------------------------------------
-async function requestJoinEvent() {
+async function requestJoinEvent(elementIds) {
   if (!activeEvent) return;
   const profile = getCurrentProfile();
   const uid = myUid();
@@ -363,6 +366,13 @@ async function requestJoinEvent() {
     placement: null,
     joinedAt: serverTimestamp(),
   });
+  if (elementIds && elementIds.length) {
+    await setDoc(doc(db, "events", activeEvent.id, "participants", uid, "deck", "info"), {
+      elements: elementIds,
+    });
+  }
+  showJoinForm = false;
+  joinSelectedElementIds = [];
   showToast(isOrganizer() ? "Tu es inscrit." : "Demande d'inscription envoyée à l'organisateur.");
 }
 
@@ -551,11 +561,49 @@ function renderEventPlayerArea() {
     if (me?.status === "refuse") msg = "Ta demande d'inscription a été refusée par l'organisateur.";
     if (me?.status === "exclu") msg = "Tu as été retiré de cet événement par l'organisateur.";
     if (me?.status === "parti") msg = "Tu as quitté cet événement.";
+    const gameElements = getGameElements(activeEvent.game);
+
+    if (!gameElements.length) {
+      el.innerHTML = `
+        <p class="settings-note">${msg}</p>
+        <button class="btn btn-primary" type="button" id="ev-btn-join">🏆 Événement disponible : ${escapeHtml(activeEvent.game)}</button>
+      `;
+      $("#ev-btn-join")?.addEventListener("click", () => withErrorToast(() => requestJoinEvent()));
+      return;
+    }
+
+    if (!showJoinForm) {
+      el.innerHTML = `
+        <p class="settings-note">${msg}</p>
+        <button class="btn btn-primary" type="button" id="ev-btn-join">🏆 Événement disponible : ${escapeHtml(activeEvent.game)}</button>
+      `;
+      $("#ev-btn-join")?.addEventListener("click", () => {
+        showJoinForm = true;
+        joinSelectedElementIds = [];
+        render();
+      });
+      return;
+    }
+
     el.innerHTML = `
       <p class="settings-note">${msg}</p>
-      <button class="btn btn-primary" type="button" id="ev-btn-join">🏆 Événement disponible : ${escapeHtml(activeEvent.game)}</button>
+      <div id="ev-join-elements-wrap">${elementsPickerHtml(activeEvent.game, joinSelectedElementIds)}</div>
+      <button class="btn btn-primary" type="button" id="ev-btn-join-confirm">Confirmer l'inscription</button>
+      <button class="btn btn-ghost" type="button" id="ev-btn-join-cancel">Annuler</button>
     `;
-    $("#ev-btn-join")?.addEventListener("click", () => withErrorToast(requestJoinEvent));
+    wireElementsPicker($("#ev-join-elements-wrap"), joinSelectedElementIds);
+    $("#ev-btn-join-confirm")?.addEventListener("click", () => {
+      if (!joinSelectedElementIds.length) {
+        showToast("Choisis au moins un élément pour ton deck.", true);
+        return;
+      }
+      withErrorToast(() => requestJoinEvent(joinSelectedElementIds.slice()));
+    });
+    $("#ev-btn-join-cancel")?.addEventListener("click", () => {
+      showJoinForm = false;
+      joinSelectedElementIds = [];
+      render();
+    });
     return;
   }
 
@@ -741,11 +789,29 @@ async function openEventHistory() {
 async function showEventHistoryDetail(eventId) {
   const detailEl = $("#ev-history-detail");
   detailEl.innerHTML = `<p class="settings-note">Chargement…</p>`;
-  const partsSnap = await getDocs(collection(db, "events", eventId, "participants"));
+  const [eventSnap, partsSnap] = await Promise.all([
+    getDoc(doc(eventsCol, eventId)),
+    getDocs(collection(db, "events", eventId, "participants")),
+  ]);
+  const gameName = eventSnap.exists() ? eventSnap.data().game : null;
+  const gameElements = gameName ? getGameElements(gameName) : [];
   const ranked = partsSnap.docs
     .map((d) => ({ id: d.id, ...d.data() }))
     .filter((p) => p.placement != null)
     .sort((a, b) => a.placement - b.placement);
+
+  let decksByUid = {};
+  if (gameElements.length) {
+    const deckSnaps = await Promise.all(
+      ranked.map((p) =>
+        getDoc(doc(db, "events", eventId, "participants", p.id, "deck", "info")).catch(() => null)
+      )
+    );
+    ranked.forEach((p, i) => {
+      const snap = deckSnaps[i];
+      decksByUid[p.id] = snap && snap.exists() ? snap.data().elements : null;
+    });
+  }
 
   detailEl.innerHTML = `<div class="manage-grid-label">Classement final</div>`;
   ranked.forEach((p) => {
@@ -757,6 +823,9 @@ async function showEventHistoryDetail(eventId) {
     const name = document.createElement("div");
     name.className = "dd-row-name";
     name.innerHTML = `${ordinal(p.placement)} — ${escapeHtml(p.pseudo)}`;
+    if (gameElements.length) {
+      name.innerHTML += `<br>${elementIconsHtml(gameName, decksByUid[p.id])}`;
+    }
     row.appendChild(name);
     detailEl.appendChild(row);
     renderAvatar(avatarHolder, p, 38);

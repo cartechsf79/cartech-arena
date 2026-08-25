@@ -5,6 +5,7 @@
 // ============================================================================
 import {
   doc,
+  getDoc,
   setDoc,
   updateDoc,
   deleteDoc,
@@ -17,7 +18,15 @@ import {
 import { db } from "./firebase-init.js";
 import { $, getCurrentProfile, getCurrentUid, showToast, friendlyError, renderAvatar, hideAllViews, openPlayerProfileModal } from "./app.js";
 import { FORMATS, findFormat } from "./catalog.js";
-import { getAllGames, getGameWinCondition, winConditionLabel } from "./live-catalog.js";
+import {
+  getAllGames,
+  getGameWinCondition,
+  winConditionLabel,
+  getGameElements,
+  elementsPickerHtml,
+  wireElementsPicker,
+  elementIconsHtml,
+} from "./live-catalog.js";
 import { showSeasonScreen } from "./season.js";
 
 // Toute action Firestore peut échouer (règles de sécurité, réseau...) — on
@@ -49,6 +58,19 @@ let listening = false;
 // Petite mémoire d'écran : quel joueur est ciblé par "Proposer un duel" en ce
 // moment (affiche le formulaire de proposition en dessous de sa carte).
 let proposingToUid = null;
+
+// Éléments de deck cochés en train de proposer/accepter un duel (voir
+// elementsPickerHtml dans live-catalog.js) — vidés à chaque nouvelle
+// proposition/réception pour ne jamais garder la sélection d'un duel
+// précédent.
+let proposeSelectedElementIds = [];
+let acceptSelectedElementIds = [];
+let lastIncomingDuelId = null;
+
+// Duel qui vient tout juste de se terminer (recap avec les decks révélés,
+// affiché jusqu'à ce que le joueur le ferme) — voir revealFinishedDuel.
+let justFinishedDuel = null; // { duel, myElements, oppElements } | null
+let duelsLoadedOnce = false;
 
 function isOrganizer() {
   return getCurrentProfile()?.role === "organisateur";
@@ -109,7 +131,23 @@ function startListening() {
   );
   unsubscribers.push(
     onSnapshot(duelsCol, (snap) => {
-      duels = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const next = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      // Détecte un duel qui vient tout juste de passer à "termine" et qui me
+      // concerne, pour proposer le récapitulatif avec les decks révélés
+      // (voir revealFinishedDuel) — ignoré au tout premier chargement
+      // (duelsLoadedOnce), sinon un duel déjà terminé depuis un moment
+      // déclencherait à tort le récap à chaque ouverture de l'écran.
+      if (duelsLoadedOnce) {
+        const uid = myUid();
+        const finishedNow = next.find((d) => {
+          if (d.status !== "termine" || (d.fromUid !== uid && d.toUid !== uid)) return false;
+          const prev = duels.find((p) => p.id === d.id);
+          return !prev || prev.status !== "termine";
+        });
+        if (finishedNow) revealFinishedDuel(finishedNow);
+      }
+      duelsLoadedOnce = true;
+      duels = next;
       render();
     })
   );
@@ -193,13 +231,33 @@ async function leaveSession() {
   showToast("Tu as quitté le duel du jour.");
 }
 
+// Deck déclaré par un joueur pour un duel — document à part, jamais
+// modifiable une fois créé, caché à l'adversaire tant que le duel n'est
+// pas "termine" (voir le long commentaire dans firestore.rules). Facultatif
+// : ne s'applique que si le jeu du duel a des éléments configurés.
+function deckDocRef(duelId, uid) {
+  return doc(db, "dailySession", SESSION_ID, "duels", duelId, "decks", uid);
+}
+async function declareDeck(duelId, elements) {
+  await setDoc(deckDocRef(duelId, myUid()), { elements });
+}
+async function fetchDeck(duelId, uid) {
+  const snap = await getDoc(deckDocRef(duelId, uid));
+  return snap.exists() ? snap.data().elements : null;
+}
+
 async function proposeDuel(targetUid) {
   const game = $("#dd-propose-game")?.value;
   const formatId = $("#dd-propose-format")?.value;
   if (!game || !formatId) return;
+  const gameElements = getGameElements(game);
+  if (gameElements.length && !proposeSelectedElementIds.length) {
+    showToast("Choisis au moins un élément pour ton deck.", true);
+    return;
+  }
   const me = getCurrentProfile();
   const target = participants.find((p) => p.id === targetUid);
-  await addDoc(duelsCol, {
+  const ref = await addDoc(duelsCol, {
     fromUid: myUid(),
     fromPseudo: me.pseudo,
     toUid: targetUid,
@@ -211,15 +269,62 @@ async function proposeDuel(targetUid) {
     resultTo: null,
     createdAt: serverTimestamp(),
   });
+  if (gameElements.length) {
+    await declareDeck(ref.id, proposeSelectedElementIds.slice());
+  }
   proposingToUid = null;
+  proposeSelectedElementIds = [];
   showToast("Proposition envoyée !");
 }
 
-async function acceptProposal(duelId) {
+async function acceptProposal(duelId, game) {
+  const gameElements = getGameElements(game);
+  if (gameElements.length && !acceptSelectedElementIds.length) {
+    showToast("Choisis au moins un élément pour ton deck.", true);
+    return;
+  }
+  if (gameElements.length) {
+    await declareDeck(duelId, acceptSelectedElementIds.slice());
+  }
   await updateDoc(doc(duelsCol, duelId), { status: "en_cours" });
+  acceptSelectedElementIds = [];
 }
 async function declineProposal(duelId) {
   await updateDoc(doc(duelsCol, duelId), { status: "refuse" });
+}
+
+// Récapitulatif affiché juste après la fin d'un duel qui me concerne — les
+// deux decks ne sont récupérables (côté serveur) qu'à partir de maintenant,
+// le duel étant "termine" (voir fetchDeck / firestore.rules). Ne fait rien
+// si le jeu du duel n'a aucun élément configuré (rien à révéler).
+async function revealFinishedDuel(duel) {
+  const gameElements = getGameElements(duel.game);
+  if (!gameElements.length) return;
+  const uid = myUid();
+  const oppUid = duel.fromUid === uid ? duel.toUid : duel.fromUid;
+  const [myElements, oppElements] = await Promise.all([
+    fetchDeck(duel.id, uid).catch(() => null),
+    fetchDeck(duel.id, oppUid).catch(() => null),
+  ]);
+  justFinishedDuel = { duel, myElements, oppElements };
+  render();
+}
+
+function renderFinishedDuelRecap({ duel, myElements, oppElements }) {
+  const uid = myUid();
+  const iAmFrom = duel.fromUid === uid;
+  const oppPseudo = iAmFrom ? duel.toPseudo : duel.fromPseudo;
+  const myResult = iAmFrom ? duel.resultFrom : duel.resultTo;
+  const won = myResult?.iWon;
+  return `
+    <div class="dd-notif">
+      <h3>${won ? "🏆" : "💔"} Duel terminé contre ${escapeHtml(oppPseudo)}</h3>
+      ${myResult ? `<p class="settings-note">${won ? "Victoire" : "Défaite"} (${myResult.myScore} - ${myResult.oppScore})</p>` : ""}
+      <p class="settings-note">Ton deck : ${elementIconsHtml(duel.game, myElements)}</p>
+      <p class="settings-note">Deck de ${escapeHtml(oppPseudo)} : ${elementIconsHtml(duel.game, oppElements)}</p>
+      <button class="btn btn-ghost" type="button" id="dd-btn-close-recap">Fermer</button>
+    </div>
+  `;
 }
 
 async function submitResult(duel, myScore, oppScore, iWon) {
@@ -424,10 +529,16 @@ function renderPlayerArea() {
   let html = "";
 
   if (activeDuel) {
+    justFinishedDuel = null;
     html += renderActiveDuelCard(activeDuel);
   } else if (incoming.length) {
+    if (lastIncomingDuelId !== incoming[0].id) {
+      lastIncomingDuelId = incoming[0].id;
+      acceptSelectedElementIds = [];
+    }
     html += renderIncomingProposalCard(incoming[0]);
   } else {
+    if (justFinishedDuel) html += renderFinishedDuelRecap(justFinishedDuel);
     html += renderAvailableList();
   }
 
@@ -491,6 +602,7 @@ function renderProposeForm(target) {
       ${proposeGameWcInfoHtml(games[0])}
       <label for="dd-propose-format">Format</label>
       <select id="dd-propose-format">${formatOptions}</select>
+      <div id="dd-propose-elements-wrap">${elementsPickerHtml(games[0], proposeSelectedElementIds)}</div>
       <button class="btn btn-primary" type="button" id="dd-btn-send-proposal">Envoyer la proposition à ${escapeHtml(target.pseudo)}</button>
     </div>
   `;
@@ -502,6 +614,7 @@ function renderIncomingProposalCard(duel) {
     <div class="dd-notif">
       <h3>⚔️ Proposition de duel !</h3>
       <p><b>${escapeHtml(duel.fromPseudo)}</b> te propose un duel : ${escapeHtml(duel.game)} — ${format.label}.</p>
+      <div id="dd-accept-elements-wrap">${elementsPickerHtml(duel.game, acceptSelectedElementIds)}</div>
       <div class="modal-actions">
         <button class="btn btn-ghost" type="button" id="dd-btn-decline">Refuser</button>
         <button class="btn btn-primary" type="button" id="dd-btn-accept">Accepter</button>
@@ -580,10 +693,23 @@ function updateProposeWcInfo() {
   info.textContent = wc ? `🎯 ${winConditionLabel(wc)}` : "";
 }
 
+// Rejoue le sélecteur d'éléments quand le jeu choisi change — la sélection
+// précédente ne veut plus rien dire pour un autre jeu, donc on repart de
+// zéro (contrairement à un simple clic sur un élément, qui ne redessine
+// rien — voir wireElementsPicker dans live-catalog.js).
+function refreshProposeElementsPicker() {
+  const wrap = $("#dd-propose-elements-wrap");
+  if (!wrap) return;
+  proposeSelectedElementIds = [];
+  wrap.innerHTML = elementsPickerHtml($("#dd-propose-game")?.value, proposeSelectedElementIds);
+  wireElementsPicker(wrap, proposeSelectedElementIds);
+}
+
 function wireAvailableListEvents() {
   document.querySelectorAll('[data-action="propose"]').forEach((btn) => {
     btn.addEventListener("click", () => {
       proposingToUid = proposingToUid === btn.dataset.uid ? null : btn.dataset.uid;
+      proposeSelectedElementIds = [];
       render();
     });
   });
@@ -591,8 +717,16 @@ function wireAvailableListEvents() {
     btn.addEventListener("click", () => openPlayerProfileModal(btn.dataset.uid));
   });
   $("#dd-btn-send-proposal")?.addEventListener("click", () => withErrorToast(() => proposeDuel(proposingToUid)));
-  $("#dd-propose-game")?.addEventListener("change", updateProposeWcInfo);
+  $("#dd-propose-game")?.addEventListener("change", () => {
+    updateProposeWcInfo();
+    refreshProposeElementsPicker();
+  });
+  wireElementsPicker($("#dd-propose-elements-wrap"), proposeSelectedElementIds);
   updateProposeWcInfo();
+  $("#dd-btn-close-recap")?.addEventListener("click", () => {
+    justFinishedDuel = null;
+    render();
+  });
 
   // Photos de profil des joueurs disponibles (pas encore affichées tant que
   // ces lignes n'existent pas dans le DOM, d'où l'appel ici plutôt qu'au
@@ -605,7 +739,8 @@ function wireAvailableListEvents() {
 
 function wireIncomingProposalEvents(duel) {
   if (!duel) return;
-  $("#dd-btn-accept")?.addEventListener("click", () => withErrorToast(() => acceptProposal(duel.id)));
+  wireElementsPicker($("#dd-accept-elements-wrap"), acceptSelectedElementIds);
+  $("#dd-btn-accept")?.addEventListener("click", () => withErrorToast(() => acceptProposal(duel.id, duel.game)));
   $("#dd-btn-decline")?.addEventListener("click", () => withErrorToast(() => declineProposal(duel.id)));
 }
 

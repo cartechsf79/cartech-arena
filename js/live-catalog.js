@@ -18,6 +18,8 @@ import {
   collection,
   onSnapshot,
   serverTimestamp,
+  arrayUnion,
+  arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 import { db } from "./firebase-init.js";
@@ -58,6 +60,9 @@ export const MAX_ANIMATED_TAG_EMOJI_BYTES = 300_000;
 // profil entière (plus grand qu'une icône mais plus petit qu'un fond de
 // thème plein écran) — marge intermédiaire entre les deux.
 export const MAX_PROFILE_BG_BYTES = 500_000;
+// Icône d'un élément de jeu (ex. les couleurs d'encre à Lorcana) : même
+// gabarit qu'un emoji de tag (toute petite icône), donc même marge.
+export const MAX_GAME_ELEMENT_BYTES = 150_000;
 
 // ---------------------------------------------------------------------------
 // Écoute temps réel — démarrée une seule fois après connexion (voir app.js)
@@ -186,6 +191,103 @@ export function winConditionLabel(wc) {
   if (wc.type === "point_maximal") return `Objectif : ${wc.value} points`;
   if (wc.type === "point_defaite") return `Points de vie de départ : ${wc.value} (éliminer l'adversaire)`;
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Éléments d'un jeu (ex. les 6 couleurs d'encre à Lorcana, les types à
+// Pokémon...) — configurés par jeu, stockés dans le même document
+// "games/{nom}" que la condition de victoire ci-dessus (voir le long
+// commentaire sur setGameWinCondition : { merge: true } est indispensable
+// pour ne jamais écraser le reste du document, notamment sur un jeu de base
+// qui n'a pas de champ "name"). Chaque élément a un nom + une petite icône,
+// pour que les joueurs déclarent leur deck (voir daily-duel.js/event.js) en
+// cochant un ou plusieurs éléments parmi ceux du jeu choisi — un deck peut
+// combiner plusieurs éléments (ex. un deck 2 couleurs à Lorcana).
+// arrayUnion/arrayRemove (plutôt qu'une lecture puis réécriture du tableau
+// entier) évitent tout risque de race condition si deux ajouts partent
+// presque en même temps.
+// ---------------------------------------------------------------------------
+export function getGameElements(name) {
+  return liveGames.find((g) => g.id === name)?.elements || [];
+}
+export function findGameElement(gameName, elementId) {
+  return getGameElements(gameName).find((e) => e.id === elementId) || null;
+}
+export async function addGameElement(gameName, { name, imageDataUrl }) {
+  const element = { id: "el_" + Math.random().toString(36).slice(2, 10), name, imageDataUrl };
+  await setDoc(doc(gamesCol, gameName), { elements: arrayUnion(element) }, { merge: true });
+}
+export async function removeGameElement(gameName, elementId) {
+  const element = findGameElement(gameName, elementId);
+  if (!element) return;
+  await updateDoc(doc(gamesCol, gameName), { elements: arrayRemove(element) });
+}
+
+// ---------------------------------------------------------------------------
+// Affichage partagé des éléments — utilisé aussi bien par le Duel du jour
+// que par l'Événement (voir daily-duel.js/event.js), d'où leur place ici
+// plutôt que dupliqués dans les deux fichiers.
+// ---------------------------------------------------------------------------
+function escapeHtmlElements(str) {
+  const d = document.createElement("div");
+  d.textContent = str ?? "";
+  return d.innerHTML;
+}
+
+// Sélecteur à cocher (chips) des éléments d'un jeu, pour déclarer son deck.
+// Retourne une chaîne vide si le jeu n'a aucun élément configuré (rien à
+// déclarer) — c'est ce vide qui rend la déclaration facultative tant que
+// l'organisateur n'a configuré aucun élément pour ce jeu.
+export function elementsPickerHtml(gameName, selectedIds) {
+  const elements = getGameElements(gameName);
+  if (!elements.length) return "";
+  return `
+    <label>Ton deck — coche un ou plusieurs éléments</label>
+    <div class="chip-grid game-elements-grid">
+      ${elements
+        .map(
+          (el) => `
+        <div class="chip${selectedIds.includes(el.id) ? " active" : ""}" data-element-id="${el.id}">
+          <div class="chip-swatch" style="background-image:url('${el.imageDataUrl}');background-size:cover;background-position:center;"></div>
+          <div class="chip-label">${escapeHtmlElements(el.name)}</div>
+        </div>
+      `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+// Branche les clics sur les chips générées par elementsPickerHtml — modifie
+// directement le tableau passé en argument (par référence) et bascule la
+// classe "active" sur le chip cliqué, sans avoir besoin de tout reconstruire.
+export function wireElementsPicker(container, selectedIds) {
+  if (!container) return;
+  container.querySelectorAll(".chip[data-element-id]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const id = chip.dataset.elementId;
+      const idx = selectedIds.indexOf(id);
+      if (idx >= 0) selectedIds.splice(idx, 1);
+      else selectedIds.push(id);
+      chip.classList.toggle("active");
+    });
+  });
+}
+
+// Affichage en lecture seule des éléments d'un deck déjà déclaré (une fois
+// révélé — duel terminé ou événement terminé). elementIds peut être null
+// (deck jamais déclaré, ou pas encore visible) ou vide.
+export function elementIconsHtml(gameName, elementIds) {
+  if (!elementIds || !elementIds.length) {
+    return `<span class="settings-note">Deck non précisé.</span>`;
+  }
+  return elementIds
+    .map((id) => {
+      const el = findGameElement(gameName, id);
+      if (!el) return "";
+      return `<span class="game-element-chip"><img src="${el.imageDataUrl}" alt="${escapeHtmlElements(el.name)}">${escapeHtmlElements(el.name)}</span>`;
+    })
+    .join(" ");
 }
 
 // Toujours résoudre la décoration même si elle n'est plus publiée : sinon un
@@ -362,6 +464,29 @@ export async function compressTagEmojiImage(file) {
   return dataUrl;
 }
 
+// Compression de l'icône d'un élément de jeu (ex. une couleur d'encre à
+// Lorcana, un type à Pokémon...) — même logique que l'emoji de tag
+// ci-dessus (recadrée en carré au centre, toute petite icône).
+export async function compressGameElementImage(file) {
+  const img = await fileToImage(file);
+  const srcSize = Math.min(img.width, img.height);
+  const srcX = Math.round((img.width - srcSize) / 2);
+  const srcY = Math.round((img.height - srcSize) / 2);
+  let side = 160;
+  let dataUrl = "";
+  do {
+    const canvas = document.createElement("canvas");
+    canvas.width = side;
+    canvas.height = side;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, side, side);
+    ctx.drawImage(img, srcX, srcY, srcSize, srcSize, 0, 0, side, side);
+    dataUrl = canvas.toDataURL("image/png");
+    side -= 20;
+  } while (dataUrl.length > MAX_GAME_ELEMENT_BYTES && side > 20);
+  return dataUrl;
+}
+
 // Compression d'une image de fond de thème (JPEG, pas de transparence
 // nécessaire ici) : on réduit la plus grande dimension par paliers jusqu'à
 // passer sous MAX_THEME_BG_BYTES.
@@ -515,9 +640,16 @@ export function downloadThemeBgTemplate() {
 // voir .profile-bg-card dans style.css) — la zone marquée reste visible en
 // entier, contrairement au fond de thème plein écran qui peut être recadré
 // par le navigateur selon la taille d'écran.
+// Le fond de profil s'affiche derrière des zones plutôt HAUTES (toute la
+// fiche d'accueil, toute la popup "Voir le profil") plutôt que larges — le
+// gabarit est donc en format portrait (plus haut que large), pas paysage.
+// La forme exacte de la zone visible varie légèrement selon l'endroit
+// (accueil, popup, recherche organisateur), donc le rectangle en pointillé
+// n'est qu'un repère : garde surtout l'essentiel de l'image bien centré,
+// avec de la marge tout autour, pour que ça reste bon partout.
 export function downloadProfileBgTemplate() {
-  const W = 1200;
-  const H = 700;
+  const W = 900;
+  const H = 1200;
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
@@ -526,23 +658,52 @@ export function downloadProfileBgTemplate() {
   ctx.fillStyle = "#14161c";
   ctx.fillRect(0, 0, W, H);
 
-  const marginX = Math.round(W * 0.05);
-  const marginY = Math.round(H * 0.08);
+  // Bande de titre en haut, assez haute pour un texte sur plusieurs lignes,
+  // puis le repère (rectangle en pointillé) sur le reste de l'image.
+  const headerH = Math.round(H * 0.16);
+  const marginX = Math.round(W * 0.08);
+  const marginBottom = Math.round(H * 0.05);
   ctx.save();
   ctx.strokeStyle = "#5b8cff";
   ctx.lineWidth = 4;
   ctx.setLineDash([18, 14]);
-  ctx.strokeRect(marginX, marginY, W - marginX * 2, H - marginY * 2);
+  ctx.strokeRect(marginX, headerH, W - marginX * 2, H - headerH - marginBottom);
   ctx.restore();
 
   ctx.fillStyle = "#5b8cff";
   ctx.textAlign = "center";
-  ctx.font = "bold 32px sans-serif";
-  ctx.fillText("Zone visible derrière la fiche profil (affichée estompée)", W / 2, marginY - 22);
-  ctx.font = "24px sans-serif";
-  ctx.fillText(`Format conseillé : ${W}×${H} px (paysage)`, W / 2, H / 2);
+  ctx.font = "bold 26px sans-serif";
+  wrapFillText(
+    ctx,
+    "Garde l'essentiel de l'image bien centré : la zone visible varie un peu selon l'écran (accueil, popup, recherche)",
+    W / 2,
+    38,
+    W - marginX * 2,
+    32
+  );
+  ctx.font = "22px sans-serif";
+  ctx.fillText(`Format conseillé : ${W}×${H} px (portrait)`, W / 2, H / 2);
 
-  triggerDownload(canvas.toDataURL("image/png"), "gabarit-fond-profil-1200x700.png");
+  triggerDownload(canvas.toDataURL("image/png"), "gabarit-fond-profil-900x1200.png");
+}
+
+// Petit utilitaire pour retourner du texte sur plusieurs lignes dans un
+// canvas (fillText ne le fait pas nativement) — mot par mot, aligné en haut.
+function wrapFillText(ctx, text, x, startY, maxWidth, lineHeight) {
+  const words = text.split(" ");
+  let line = "";
+  const lines = [];
+  words.forEach((word) => {
+    const test = line ? `${line} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+  });
+  if (line) lines.push(line);
+  lines.forEach((l, i) => ctx.fillText(l, x, startY + i * lineHeight));
 }
 
 // Gabarit pour un emoji personnalisé de tag : l'icône est toujours recadrée
@@ -585,6 +746,46 @@ export function downloadTagEmojiTemplate() {
   ctx.fillText(`Image carrée ${SIZE}×${SIZE} px, fond transparent conseillé (gif animé aussi accepté)`, cx, SIZE - 20);
 
   triggerDownload(canvas.toDataURL("image/png"), "gabarit-emoji-tag-512x512.png");
+}
+
+// Gabarit pour l'icône d'un élément de jeu — même principe que le gabarit
+// d'emoji de tag ci-dessus (zone visible = cercle).
+export function downloadGameElementTemplate() {
+  const SIZE = 512;
+  const canvas = document.createElement("canvas");
+  canvas.width = SIZE;
+  canvas.height = SIZE;
+  const ctx = canvas.getContext("2d");
+
+  const cell = 16;
+  for (let y = 0; y < SIZE; y += cell) {
+    for (let x = 0; x < SIZE; x += cell) {
+      ctx.fillStyle = (x / cell + y / cell) % 2 === 0 ? "#f0f0f0" : "#ffffff";
+      ctx.fillRect(x, y, cell, cell);
+    }
+  }
+
+  const cx = SIZE / 2;
+  const cy = SIZE / 2;
+  const radius = SIZE / 2 - 8;
+
+  ctx.save();
+  ctx.strokeStyle = "#5b8cff";
+  ctx.lineWidth = 4;
+  ctx.setLineDash([14, 10]);
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle = "#5b8cff";
+  ctx.textAlign = "center";
+  ctx.font = "bold 22px sans-serif";
+  ctx.fillText("Zone visible = cercle (icône affichée toute petite et ronde)", cx, 34);
+  ctx.font = "18px sans-serif";
+  ctx.fillText(`Image carrée ${SIZE}×${SIZE} px, fond transparent conseillé`, cx, SIZE - 20);
+
+  triggerDownload(canvas.toDataURL("image/png"), "gabarit-element-jeu-512x512.png");
 }
 
 // ---------------------------------------------------------------------------

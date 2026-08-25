@@ -343,6 +343,36 @@ service cloud.firestore {
       allow delete: if isOrganizer();
     }
 
+    // --------------------------------------------------------------------
+    // Deck déclaré par un joueur pour un duel du jour (quel(s) élément(s) de
+    // jeu il a joué — voir /games plus bas et js/live-catalog.js). Un
+    // document à part (au lieu d'un simple champ sur le duel ci-dessous)
+    // EXPRÈS : le duel lui-même est lisible par tous les comptes connectés
+    // (nécessaire pour savoir qui est déjà occupé), donc un champ "deck"
+    // directement dessus serait visible tout de suite — ce qui annulerait
+    // le but ("éviter les contres") de cacher son deck à l'adversaire tant
+    // que le duel n'est pas terminé. Toujours lisible par son titulaire et
+    // par l'organisateur ; lisible par l'adversaire seulement une fois le
+    // duel "termine". Jamais modifiable une fois déclaré (create only).
+    // --------------------------------------------------------------------
+    match /dailySession/{sessionId}/duels/{duelId}/decks/{uid} {
+      allow read: if request.auth != null && (
+        request.auth.uid == uid
+        || isOrganizer()
+        || get(/databases/$(database)/documents/dailySession/$(sessionId)/duels/$(duelId)).data.status == 'termine'
+      );
+      allow create: if request.auth != null && request.auth.uid == uid
+        && (
+          get(/databases/$(database)/documents/dailySession/$(sessionId)/duels/$(duelId)).data.fromUid == uid
+          || get(/databases/$(database)/documents/dailySession/$(sessionId)/duels/$(duelId)).data.toUid == uid
+        )
+        && request.resource.data.elements is list
+        && request.resource.data.elements.size() >= 1
+        && request.resource.data.elements.size() <= 4;
+      allow update: if false;
+      allow delete: if isOrganizer();
+    }
+
     match /dailySession/{sessionId}/duels/{duelId} {
       // Lecture ouverte à tous les connectés : nécessaire pour que chacun
       // puisse calculer, côté client, qui est déjà occupé par un autre duel.
@@ -453,6 +483,25 @@ service cloud.firestore {
         )
       );
 
+      allow delete: if isOrganizer();
+    }
+
+    // Deck déclaré par un participant pour cet événement — même principe
+    // que les decks du Duel du jour ci-dessus : un document à part (pas un
+    // champ sur le participant, lui lisible par tous) pour rester caché aux
+    // autres joueurs tant que l'événement n'est pas "termine". Toujours
+    // lisible par son titulaire et par l'organisateur.
+    match /events/{eventId}/participants/{uid}/deck/{docId} {
+      allow read: if request.auth != null && (
+        request.auth.uid == uid
+        || isOrganizer()
+        || get(/databases/$(database)/documents/events/$(eventId)).data.status == 'termine'
+      );
+      allow create: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.elements is list
+        && request.resource.data.elements.size() >= 1
+        && request.resource.data.elements.size() <= 4;
+      allow update: if false;
       allow delete: if isOrganizer();
     }
 
