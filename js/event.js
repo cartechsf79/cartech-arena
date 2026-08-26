@@ -143,6 +143,16 @@ function stopListening() {
   if (unsubMatches) unsubMatches();
   unsubEvents = unsubParticipants = unsubMatches = null;
   listening = false;
+  // Oublier l'événement actif mémorisé : sinon, en cas de fermeture puis
+  // réouverture de l'écran alors que le même événement est toujours actif,
+  // startListening() croit à tort que "rien n'a changé" et ne rappelle
+  // jamais attachActiveEventListeners() — les écouteurs participants/matchs
+  // restent orphelins et l'écran ne reçoit plus aucune mise à jour en direct
+  // (y compris ses propres résultats envoyés) tant qu'un VRAI changement
+  // d'événement actif ne se produit pas.
+  activeEvent = null;
+  eventParticipants = [];
+  eventMatches = [];
 }
 
 function startCountdownTicker() {

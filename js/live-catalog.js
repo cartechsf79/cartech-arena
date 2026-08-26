@@ -326,6 +326,16 @@ export function findAnyTag(id) {
   return liveTags.find((t) => t.id === id) || null;
 }
 
+// Le tag de récompense du système de parrainage — au plus un à la fois, créé/
+// marqué par l'organisateur (case à cocher dans settings.js). Retourne null
+// tant que l'organisateur n'en a pas encore marqué un : dans ce cas, aucune
+// récompense n'est distribuée (voir maybeGrantReferralReward dans
+// daily-duel.js), comme pour tout catalogue pas encore configuré par
+// l'organisateur dans cette appli.
+export function findReferralRewardTag() {
+  return liveTags.find((t) => t.referralReward) || null;
+}
+
 // Un tag est utilisable par un joueur soit parce qu'il l'a explicitement
 // reçu ("owned"), soit parce que l'organisateur l'a marqué comme disponible
 // pour tout le monde dès la création du compte ("defaultOwned").
@@ -887,11 +897,17 @@ export async function deleteTheme(id) {
 // lui aussi) : s'il est défini, il prend le pas sur l'emoji texte à
 // l'affichage (voir getTagIcon ci-dessus) sans jamais l'effacer — repasser
 // emojiImageDataUrl à null (via updateTag) suffit à revenir à l'emoji texte.
-export async function createTag({ name, color, defaultOwned, emoji, emojiImageDataUrl }) {
+// referralReward (facultatif) : marque CE tag comme la récompense du
+// système de parrainage (voir js/app.js pour la modale d'inscription et
+// js/daily-duel.js pour le moment où il est accordé) — voir aussi
+// tagIsReferralReward dans firestore.rules, qui s'appuie sur ce même champ
+// pour valider côté serveur les 2 écritures (soi-même + le parrain).
+export async function createTag({ name, color, defaultOwned, emoji, emojiImageDataUrl, referralReward }) {
   await addDoc(tagsCol, {
     name: name.trim(),
     color,
     defaultOwned: !!defaultOwned,
+    referralReward: !!referralReward,
     emoji: (emoji || "").trim() || null,
     emojiImageDataUrl: emojiImageDataUrl || null,
     createdAt: serverTimestamp(),

@@ -88,6 +88,49 @@ service cloud.firestore {
     }
 
     // --------------------------------------------------------------------
+    // Système de parrainage : un joueur peut renseigner, une seule fois et
+    // jamais changer ensuite, le pseudo (converti en uid) de la personne qui
+    // l'a parrainé (voir js/app.js, modale à l'inscription). Une fois que ce
+    // filleul termine son PREMIER duel du jour jamais joué, les DEUX comptes
+    // reçoivent un tag récompense marqué "referralReward:true" par
+    // l'organisateur (voir js/settings.js, case à cocher dans la création
+    // d'un tag) — même esprit que le tag de saison auto-attribué ci-dessus,
+    // mais avec en plus une écriture CROISÉE vers le compte du parrain (voir
+    // isValidCrossReferralGrant plus bas), puisque ce n'est pas son propre
+    // compte qui déclenche l'action.
+    // --------------------------------------------------------------------
+    function tagIsReferralReward(tagId) {
+      return exists(/databases/$(database)/documents/tags/$(tagId))
+        && get(/databases/$(database)/documents/tags/$(tagId)).data.get('referralReward', false) == true;
+    }
+    function isValidSelfReferralTagGrant(oldOwned, newOwned) {
+      return newOwned.size() == oldOwned.size() + 1
+        && newOwned == oldOwned.concat([newOwned[newOwned.size() - 1]])
+        && !(newOwned[newOwned.size() - 1] in oldOwned)
+        && tagIsReferralReward(newOwned[newOwned.size() - 1]);
+    }
+    // Écriture croisée vers le compte du PARRAIN (userId ici = le parrain,
+    // pas la personne connectée) : seulement possible si MON propre document
+    // (request.auth.uid, le filleul) prouve que "userId" est bien mon
+    // parrain, et seulement pour ajouter EXACTEMENT le tag de récompense à
+    // "tags.owned" — rien d'autre sur le document du parrain ne peut bouger
+    // (vérifié via diff().affectedKeys(), qui ne doit contenir que "tags",
+    // et tags.active doit rester inchangé lui aussi).
+    function isValidCrossReferralGrant(userId) {
+      let oldOwned = resource.data.get('tags', {}).get('owned', []);
+      let newOwned = request.resource.data.get('tags', {}).get('owned', []);
+      return request.auth != null
+        && request.auth.uid != userId
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('referral', {}).get('referredByUid', null) == userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tags'])
+        && request.resource.data.get('tags', {}).get('active', []) == resource.data.get('tags', {}).get('active', [])
+        && newOwned.size() == oldOwned.size() + 1
+        && newOwned == oldOwned.concat([newOwned[newOwned.size() - 1]])
+        && !(newOwned[newOwned.size() - 1] in oldOwned)
+        && tagIsReferralReward(newOwned[newOwned.size() - 1]);
+    }
+
+    // --------------------------------------------------------------------
     // Fonctions utilitaires pour les matchs d'Événement : un match se joue
     // en plusieurs manches (1/3/5 selon bo1/bo3/bo5), chaque joueur envoie
     // TOUT son tableau de résultats en un seul coup (jamais rempli à
@@ -145,6 +188,12 @@ service cloud.firestore {
         // Même règle, pour le titre personnalisé (voir /titles plus bas).
         && request.resource.data.get('title', {}).get('owned', []).size() == 0
         && request.resource.data.get('title', {}).get('active', null) == null
+        // Parrainage (voir plus haut) : à la création, jamais déjà "rempli" —
+        // le pseudo du parrain (converti en uid) n'est renseigné qu'ensuite,
+        // via la modale d'inscription (voir js/app.js), jamais dans le même
+        // appel que la création du compte.
+        && request.resource.data.get('referral', {}).get('referredByUid', null) == null
+        && request.resource.data.get('referral', {}).get('rewardGranted', false) == false
         && (
           (request.resource.data.role == 'organisateur'
             && request.auth.token.email.lower() == 'cartechsf79@gmail.com')
@@ -194,7 +243,8 @@ service cloud.firestore {
           && request.resource.data.get('title', {}).get('owned', []) == resource.data.get('title', {}).get('owned', [])
           && (!('tags' in resource.data)
               || request.resource.data.tags.get('owned', []) == resource.data.tags.get('owned', [])
-              || isValidSelfSeasonTagGrant(resource.data.tags.get('owned', []), request.resource.data.tags.get('owned', [])))
+              || isValidSelfSeasonTagGrant(resource.data.tags.get('owned', []), request.resource.data.tags.get('owned', []))
+              || isValidSelfReferralTagGrant(resource.data.tags.get('owned', []), request.resource.data.tags.get('owned', [])))
           // Ces 3 invariants valident un NOUVEL "active" (il doit être dans
           // "owned"), mais laissent toujours passer une écriture qui ne
           // touche pas du tout à ce champ-là (comparaison à la valeur
@@ -218,7 +268,24 @@ service cloud.firestore {
           && (!('tags' in request.resource.data)
               || tagsActiveValid(request.resource.data.tags.get('active', []), request.resource.data.tags.get('owned', []))
               || request.resource.data.tags.get('active', []) == resource.data.tags.get('active', []))
+          // Parrainage : "referredByUid" ne peut être défini QU'UNE FOIS
+          // (null -> un uid existant, jamais l'inverse ni un changement une
+          // fois posé), jamais vers soi-même. "rewardGranted" ne peut passer
+          // de faux à vrai qu'en même temps qu'on s'ajoute le tag de
+          // récompense (voir isValidSelfReferralTagGrant plus haut), et
+          // seulement si un parrain est déjà enregistré.
+          && (request.resource.data.get('referral', {}).get('referredByUid', null) == resource.data.get('referral', {}).get('referredByUid', null)
+              || (resource.data.get('referral', {}).get('referredByUid', null) == null
+                  && request.resource.data.get('referral', {}).get('referredByUid', null) != null
+                  && request.resource.data.get('referral', {}).get('referredByUid', null) != request.auth.uid
+                  && exists(/databases/$(database)/documents/users/$(request.resource.data.referral.referredByUid))))
+          && (request.resource.data.get('referral', {}).get('rewardGranted', false) == resource.data.get('referral', {}).get('rewardGranted', false)
+              || (resource.data.get('referral', {}).get('rewardGranted', false) == false
+                  && request.resource.data.get('referral', {}).get('rewardGranted', false) == true
+                  && request.resource.data.get('referral', {}).get('referredByUid', null) != null
+                  && isValidSelfReferralTagGrant(resource.data.get('tags', {}).get('owned', []), request.resource.data.get('tags', {}).get('owned', []))))
         )
+        || isValidCrossReferralGrant(userId)
       );
 
       // Un compte peut supprimer son propre profil (bouton "Supprimer mon

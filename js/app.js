@@ -14,6 +14,12 @@ import {
   doc,
   getDoc,
   setDoc,
+  updateDoc,
+  collection,
+  query,
+  where,
+  limit,
+  getDocs,
   serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
@@ -89,6 +95,21 @@ function setLoading(button, loading) {
 // filet, le profil se retrouverait créé avec l'email en guise de pseudo.
 let pendingSignupPseudo = null;
 
+// Vrai pendant qu'une inscription (email ou bouton Google du panneau
+// "Créer un compte") est en cours dans cet onglet — utilisé juste après par
+// onAuthStateChanged pour savoir s'il doit proposer la modale « As-tu été
+// parrainé ? » avant d'afficher l'écran principal. Même filet de sécurité
+// que pendingSignupPseudo ci-dessus : comme ensureUserProfile peut être
+// appelée en concurrence par handleSignup/handleGoogle ET par
+// onAuthStateChanged, on ne peut pas se fier à l'ordre d'arrivée pour savoir
+// "qui" a réellement créé le document.
+let pendingReferralPrompt = false;
+
+// Retourne { profile, isNew } : isNew vrai seulement quand CET appel vient
+// de créer le document (utilisé par onAuthStateChanged en secours de
+// pendingReferralPrompt ci-dessus, au cas où l'appel concurrent d'un des
+// deux flux d'inscription aurait gagné la course et créé le document avant
+// que ce module ait eu la main).
 async function ensureUserProfile(user, pseudoFromSignup) {
   const ref = doc(db, "users", user.uid);
   const snap = await getDoc(ref);
@@ -111,13 +132,16 @@ async function ensureUserProfile(user, pseudoFromSignup) {
     if (!data.tags || !Array.isArray(data.tags.owned)) {
       patch.tags = { owned: [], active: Array.isArray(data.tags?.active) ? data.tags.active : [] };
     }
+    // Parrainage : comptes créés avant cette version, jamais parrainés ni
+    // récompensés (voir js/firestore.rules pour la validation serveur).
+    if (!data.referral) patch.referral = { referredByUid: null, rewardGranted: false };
     if (!("photoDataUrl" in data)) patch.photoDataUrl = null;
     if (!data.pseudoLower) patch.pseudoLower = (data.pseudo || "").toLowerCase();
     if (Object.keys(patch).length) {
       await setDoc(ref, patch, { merge: true });
-      return { ...data, ...patch };
+      return { profile: { ...data, ...patch }, isNew: false };
     }
-    return data;
+    return { profile: data, isNew: false };
   }
 
   const isOrganizer = (user.email || "").toLowerCase() === ORGANIZER_EMAIL.toLowerCase();
@@ -137,11 +161,12 @@ async function ensureUserProfile(user, pseudoFromSignup) {
     tags: { owned: [], active: [] },
     profileBg: { owned: [], active: null },
     title: { owned: [], active: null },
+    referral: { referredByUid: null, rewardGranted: false },
     createdAt: serverTimestamp(),
   };
 
   await setDoc(ref, profile);
-  return profile;
+  return { profile, isNew: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -161,12 +186,14 @@ async function handleSignup(e) {
 
   setLoading(btn, true);
   pendingSignupPseudo = pseudo;
+  pendingReferralPrompt = true;
   try {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     await updateProfile(cred.user, { displayName: pseudo });
     await ensureUserProfile(cred.user, pseudo);
     showToast(`Bienvenue sur Car'Tech Arena, ${pseudo} !`);
   } catch (err) {
+    pendingReferralPrompt = false;
     showToast(friendlyError(err), true);
   } finally {
     pendingSignupPseudo = null;
@@ -190,12 +217,18 @@ async function handleLogin(e) {
   }
 }
 
-async function handleGoogle() {
+// signupIntent : vrai si on vient du bouton Google du panneau "Créer un
+// compte" (par opposition à celui du panneau "Connexion") — sert uniquement
+// à décider si onAuthStateChanged doit proposer la modale de parrainage (un
+// compte Google déjà existant qui se reconnecte ne doit jamais la revoir).
+async function handleGoogle(signupIntent) {
+  if (signupIntent) pendingReferralPrompt = true;
   try {
     const provider = new GoogleAuthProvider();
     const cred = await signInWithPopup(auth, provider);
     await ensureUserProfile(cred.user);
   } catch (err) {
+    pendingReferralPrompt = false;
     showToast(friendlyError(err), true);
   }
 }
@@ -489,13 +522,78 @@ onAuthStateChanged(auth, async (user) => {
     // affichées sur ma propre fiche de l'écran d'accueil — démarré dès la
     // connexion pour la même raison que le bandeau ci-dessus.
     startCareerStatsListener();
-    const profile = await ensureUserProfile(user);
+    const { profile, isNew } = await ensureUserProfile(user);
     renderProfile(profile);
-    showAppScreen();
+    // Modale « As-tu été parrainé ? » : seulement juste après une inscription
+    // (jamais à une reconnexion normale) — voir pendingReferralPrompt et
+    // isNew ci-dessus pour pourquoi on se fie aux deux à la fois.
+    const shouldPromptReferral = pendingReferralPrompt || isNew;
+    pendingReferralPrompt = false;
+    if (shouldPromptReferral) {
+      showReferralModal(() => showAppScreen());
+    } else {
+      showAppScreen();
+    }
   } catch (err) {
     showToast(friendlyError(err), true);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Modale « As-tu été parrainé ? » — affichée une seule fois, juste après une
+// inscription (jamais revue ensuite). Étape 1 : Oui/Non. Étape 2 (si Oui) :
+// pseudo du parrain, converti en uid via la même recherche que
+// handleSearchPlayer (settings.js). "Non" ou une recherche infructueuse
+// laissent simplement referral.referredByUid à null pour toujours (la
+// modale ne revient jamais — voir isNew/pendingReferralPrompt ci-dessus).
+// ---------------------------------------------------------------------------
+function showReferralStep(step) {
+  $("#referral-step-ask").style.display = step === "ask" ? "" : "none";
+  $("#referral-step-pseudo").style.display = step === "pseudo" ? "" : "none";
+  $("#referral-error").textContent = "";
+}
+
+function showReferralModal(onDone) {
+  $("#referral-pseudo-input").value = "";
+  showReferralStep("ask");
+  $("#overlay-referral").classList.add("show");
+
+  const finish = () => {
+    $("#overlay-referral").classList.remove("show");
+    onDone();
+  };
+
+  $("#btn-referral-no").onclick = finish;
+  $("#btn-referral-yes").onclick = () => showReferralStep("pseudo");
+  $("#btn-referral-back").onclick = () => showReferralStep("ask");
+  $("#btn-referral-skip").onclick = finish;
+  $("#form-referral-pseudo").onsubmit = async (e) => {
+    e.preventDefault();
+    const term = $("#referral-pseudo-input").value.trim().toLowerCase();
+    const errEl = $("#referral-error");
+    if (!term) return;
+    try {
+      const q = query(collection(db, "users"), where("pseudoLower", "==", term), limit(1));
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        errEl.textContent = "Aucun joueur trouvé avec ce pseudo — vérifie l'orthographe, ou passe cette étape.";
+        return;
+      }
+      const parrainDoc = snap.docs[0];
+      if (parrainDoc.id === getCurrentUid()) {
+        errEl.textContent = "Tu ne peux pas te parrainer toi-même 🙂";
+        return;
+      }
+      await updateDoc(doc(db, "users", getCurrentUid()), { "referral.referredByUid": parrainDoc.id });
+      const refreshed = await getDoc(doc(db, "users", getCurrentUid()));
+      if (refreshed.exists()) renderProfile(refreshed.data());
+      showToast(`Parrainage enregistré avec ${parrainDoc.data().pseudo} !`);
+      finish();
+    } catch (err) {
+      errEl.textContent = friendlyError(err);
+    }
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Onglets Connexion / Inscription
@@ -515,8 +613,8 @@ function switchAuthTab(tab) {
 document.addEventListener("DOMContentLoaded", () => {
   $("#form-signup").addEventListener("submit", handleSignup);
   $("#form-login").addEventListener("submit", handleLogin);
-  $("#btn-google-signup").addEventListener("click", handleGoogle);
-  $("#btn-google-login").addEventListener("click", handleGoogle);
+  $("#btn-google-signup").addEventListener("click", () => handleGoogle(true));
+  $("#btn-google-login").addEventListener("click", () => handleGoogle(false));
   $("#btn-logout").addEventListener("click", handleLogout);
   $("#btn-open-settings").addEventListener("click", showSettingsScreen);
   $("#btn-close-settings").addEventListener("click", showAppScreen);

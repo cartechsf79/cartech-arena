@@ -125,9 +125,41 @@ function populateSettingsScreen() {
   renderTitlesGrid(profile);
   renderThemesGrid(profile);
   renderTagsGrid(profile);
+  renderReferralInfo(profile);
 
   $("#search-player-result").innerHTML = "";
   $("#search-player-input").value = "";
+}
+
+// ---------------------------------------------------------------------------
+// Parrainage — mon propre statut (ai-je un parrain, la récompense a-t-elle
+// été accordée) + le nombre de joueurs que J'AI moi-même parrainés (compte
+// tous les comptes dont referral.referredByUid == mon uid) — voir js/app.js
+// pour la modale d'inscription et js/daily-duel.js pour l'octroi de la
+// récompense. Purement informatif pour l'instant ("pour plus tard").
+// ---------------------------------------------------------------------------
+async function renderReferralInfo(profile) {
+  const statusEl = $("#referral-status");
+  const countEl = $("#referral-count");
+  if (!statusEl || !countEl) return;
+
+  const referredByUid = profile?.referral?.referredByUid || null;
+  statusEl.textContent = referredByUid
+    ? profile?.referral?.rewardGranted
+      ? "🎁 Tu as été parrainé — récompense reçue !"
+      : "🎁 Tu as été parrainé — la récompense arrive après ton premier duel du jour."
+    : "Tu n'as indiqué aucun parrain (une seule occasion, à l'inscription).";
+
+  countEl.textContent = "Chargement…";
+  try {
+    const uid = getCurrentUid();
+    const q = query(collection(db, "users"), where("referral.referredByUid", "==", uid));
+    const snap = await getDocs(q);
+    const n = snap.docs.length;
+    countEl.textContent = `Tu as parrainé ${n} joueur${n > 1 ? "s" : ""}.`;
+  } catch (err) {
+    countEl.textContent = "Impossible de charger le nombre de filleuls pour l'instant.";
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1548,7 +1580,7 @@ function renderTagManageList() {
     chip.innerHTML = `
       <div class="chip-swatch" style="background:${tag.color};"></div>
       <div class="chip-label">${tagLabelHtml(tag)}</div>
-      <div class="chip-sub">${tag.defaultOwned ? "Par défaut · " : ""}Modifier</div>
+      <div class="chip-sub">${tag.defaultOwned ? "Par défaut · " : ""}${tag.referralReward ? "🎁 Récompense parrainage · " : ""}Modifier</div>
     `;
     chip.onclick = () => startEditTag(tag);
     row.appendChild(chip);
@@ -1629,6 +1661,7 @@ function startEditTag(tag) {
   $("#admin-tag-color").value = tag.color;
   $("#admin-tag-emoji").value = tag.emoji || "";
   $("#admin-tag-default").checked = !!tag.defaultOwned;
+  $("#admin-tag-referral").checked = !!tag.referralReward;
   editingTagEmojiImageDataUrl = tag.emojiImageDataUrl || null;
   $("#admin-tag-emoji-file").value = "";
   updateTagEmojiPreview();
@@ -1655,6 +1688,7 @@ async function handleAdminTagSubmit(e) {
   const color = $("#admin-tag-color").value;
   const emoji = $("#admin-tag-emoji").value.trim();
   const defaultOwned = $("#admin-tag-default").checked;
+  const referralReward = $("#admin-tag-referral")?.checked || false;
   if (!name) {
     showToast("Donne un nom au tag.", true);
     return;
@@ -1666,11 +1700,12 @@ async function handleAdminTagSubmit(e) {
         color,
         emoji: emoji || null,
         defaultOwned,
+        referralReward,
         emojiImageDataUrl: editingTagEmojiImageDataUrl || null,
       });
       showToast("Tag modifié !");
     } else {
-      await createTag({ name, color, emoji, defaultOwned, emojiImageDataUrl: editingTagEmojiImageDataUrl });
+      await createTag({ name, color, emoji, defaultOwned, referralReward, emojiImageDataUrl: editingTagEmojiImageDataUrl });
       showToast("Tag créé !");
     }
     cancelEditTag();

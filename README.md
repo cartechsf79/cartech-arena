@@ -1,6 +1,53 @@
-# Car'Tech Arena — v9
+# Car'Tech Arena — v10
 
-Cette version ajoute **4 fonctionnalités** demandées pour mieux piloter
+Cette version ajoute **3 fonctionnalités** :
+
+- **Mode spectateur** : un nouvel écran, accessible à tout compte
+  connecté (joueur ou organisateur), qui affiche uniquement les
+  **résultats** — du Duel du jour comme d'un Événement — sans jamais
+  montrer les decks pendant que ça joue, seulement une fois le
+  combat/événement terminé. Ne montre que l'activité du **jour même** :
+  dès qu'il n'y a plus rien à voir sur la journée, l'écran se vide de
+  lui-même ("rien à voir pour l'instant").
+- **Système de parrainage** : un joueur peut indiquer, une seule fois à
+  l'inscription, le pseudo du joueur qui l'a parrainé. Une fois que le
+  filleul a joué (et terminé, gagné ou perdu peu importe) son tout
+  premier Duel du jour, les **deux comptes** reçoivent automatiquement
+  un tag récompense (ex. "The Godfather") que tu marques comme tel en le
+  créant dans Espace organisateur > Tags. Un compteur "combien de
+  joueurs j'ai parrainés" est aussi visible dans Réglages, pour de
+  futures récompenses.
+- **Écran d'affichage organisateur** : un nouvel écran, réservé à
+  l'organisateur, pensé pour être ouvert sur un second écran/une télé
+  en boutique que tout le monde peut suivre en direct : chronomètre de
+  la manche en cours d'un événement, placement provisoire des joueurs,
+  score final avec les decks utilisés une fois l'événement terminé, et
+  classement du jour du Duel du jour (points gagnés aujourd'hui
+  uniquement — remis à zéro chaque nouveau jour). D'autres blocs
+  pourront s'y ajouter facilement par la suite.
+
+  À ce sujet : le chronomètre d'une manche d'événement était **déjà**
+  lancé uniquement par l'organisateur et déjà synchronisé pour tout le
+  monde (chaque joueur voit le même compte à rebours, basé sur l'heure
+  de lancement enregistrée côté serveur) — aucun changement de code
+  n'était nécessaire sur ce point précis, seul le nouvel écran
+  d'affichage ci-dessus est vraiment nouveau.
+
+Voir les 3 sections "Nouveau dans cette version" plus bas pour le détail
+complet de chacune.
+
+**Republication des règles Firestore nécessaire pour cette version**
+(nouveaux champs protégés `referral.referredByUid` / `referral.rewardGranted`
+sur le profil joueur, et une nouvelle règle qui autorise — de façon très
+encadrée — qu'un filleul déclenche automatiquement l'ajout du tag
+récompense sur le compte de son parrain) — voir "Mise à jour depuis une
+version précédente" plus bas.
+
+---
+
+## Historique — v9
+
+Cette version ajoutait **4 fonctionnalités** demandées pour mieux piloter
 la boutique, pas juste le jeu :
 
 - **Calendrier des événements à venir** : l'organisateur peut programmer
@@ -31,8 +78,6 @@ complet de chacune.
 joueur pour le titre actif/possédé, nouvelle collection
 `pointAdjustments`) — voir "Mise à jour depuis une version précédente"
 plus bas.
-
----
 
 ## Historique — v8.9
 
@@ -239,11 +284,14 @@ d'avoir à activer un mode payant.
    changes"). `js/firebase-config.js` contient déjà tes vraies clés et ton
    email organisateur, pas besoin d'y retoucher.
 
-2. **Republie les règles Firestore** (règles modifiées pour la v9 —
-   nouvelle collection `titles`, nouveaux champs protégés pour le titre
-   actif/possédé sur le profil joueur, nouvelle collection
-   `pointAdjustments` pour les bonus de points manuels, voir plus haut —
-   cette étape est **obligatoire** cette fois-ci ; garde de toute façon
+2. **Republie les règles Firestore** (règles modifiées pour la v10 —
+   nouveaux champs protégés `referral.referredByUid` /
+   `referral.rewardGranted` sur le profil joueur (parrainage), et une
+   nouvelle règle très encadrée qui permet à un filleul de déclencher
+   l'ajout du tag récompense sur le compte de son parrain (uniquement ce
+   tag précis, uniquement si le parrainage est authentique, rien d'autre
+   sur le compte du parrain ne peut être modifié par ce chemin) — voir
+   plus haut — cette étape est **obligatoire** cette fois-ci ; garde de toute façon
    l'habitude de les republier à chaque mise à jour, pour être sûr que
    tout reste synchronisé) : Firebase Console > Firestore Database > onglet "Règles"
    > sélectionne TOUT le contenu déjà présent et supprime-le d'abord >
@@ -1048,6 +1096,97 @@ tu vois en plus un lien **"Gérer ce joueur →"** dans cette fenêtre, qui
 t'amène directement à sa fiche complète en Paramètres (attribution de
 décorations/thèmes/tags).
 
+## Nouveau dans cette version — mode spectateur
+
+Un nouveau bouton **"👀 Spectateur"** sur l'écran d'accueil, accessible à
+n'importe quel compte connecté (joueur comme organisateur). Cet écran est
+**en lecture seule** : aucune action possible dessus (pas de proposition
+de duel, pas d'inscription à un événement), juste de la consultation.
+
+Il montre deux choses, uniquement pour **aujourd'hui** :
+
+- Les **duels du jour terminés aujourd'hui**, avec le score, le
+  vainqueur, et — une fois le duel terminé seulement — les decks joués
+  par chacun s'il y en a (jeu configuré avec des éléments).
+- L'**événement en cours ou tout juste terminé aujourd'hui** : pendant
+  qu'il tourne, seuls les appariements/résultats de la manche en cours
+  sont visibles (jamais les decks, qui restent cachés comme pour tout le
+  monde tant que l'événement n'est pas terminé) ; une fois terminé, le
+  classement final complet apparaît, decks compris.
+
+Dès qu'il n'y a plus rien à montrer sur la journée (rien de fini
+aujourd'hui côté Duel du jour, pas d'événement en cours ni terminé
+aujourd'hui), l'écran affiche simplement "rien à voir pour l'instant" —
+il ne remonte jamais l'historique des jours précédents. Aucune règle
+Firestore supplémentaire n'a été nécessaire pour cacher les decks : les
+règles existantes empêchaient déjà un compte qui n'est ni participant ni
+organisateur de lire un deck avant la fin du duel/événement.
+
+## Nouveau dans cette version — système de parrainage
+
+À l'inscription, une petite fenêtre demande maintenant **"As-tu été
+parrainé par quelqu'un ?"** (Oui/Non) — posée une seule fois, juste après
+la création du compte, avant d'arriver sur l'écran principal. En
+répondant "Oui", le nouveau joueur indique le **pseudo** de la personne
+qui l'a parrainé (vérifié : un message d'erreur s'affiche si le pseudo
+n'existe pas).
+
+Dès que ce filleul termine son **tout premier Duel du jour** (peu
+importe s'il gagne ou perd — c'est le fait de jouer qui compte), **les
+deux comptes** — filleul et parrain — reçoivent automatiquement un tag
+récompense. Ce tag n'est pas fixé en dur dans le code : c'est un tag que
+**toi, l'organisateur**, crées comme n'importe quel autre (Espace
+organisateur > Tags), en cochant simplement la case **"Récompense de
+parrainage"** au moment de le créer (ex. le tag "The Godfather" demandé).
+Tant qu'aucun tag n'est marqué ainsi, le parrainage fonctionne toujours
+(le pseudo du parrain est bien enregistré) mais la récompense ne se
+déclenche pas — comme les autres catalogues pas encore configurés dans
+l'appli.
+
+Un nouveau bloc **"🎁 Parrainage"** apparaît dans Réglages pour chaque
+joueur : indique s'il a été parrainé et si la récompense est arrivée, et
+un compteur "Tu as parrainé N joueur(s)" — pour de futures récompenses
+liées au nombre de filleuls, si tu le souhaites plus tard.
+
+Contre les abus : un joueur ne peut jamais accorder ce tag lui-même à
+n'importe qui — la seule écriture autorisée sur le compte d'un tiers est
+strictement encadrée côté serveur (Firestore) : uniquement l'ajout de
+CE tag précis, uniquement par le filleul déclaré vers son parrain
+déclaré, rien d'autre sur le compte visé ne peut être modifié par ce
+chemin. C'est pour cette raison que la republication des règles
+Firestore est obligatoire cette fois-ci (voir "Mise à jour depuis une
+version précédente" plus haut).
+
+## Nouveau dans cette version — écran d'affichage organisateur
+
+Un nouveau bouton **"🖥️ Écran d'affichage"** dans l'Espace organisateur,
+réservé à ton compte organisateur. L'idée : l'ouvrir sur un second écran
+ou une télé installée en boutique, que tout le monde peut regarder,
+plutôt que chacun sorte son téléphone pour vérifier où il en est.
+
+Il regroupe, dans un seul écran qui se met à jour tout seul :
+
+- Le **chronomètre** de la manche en cours d'un événement.
+- Le **placement provisoire** des joueurs pendant l'événement (victoires
+  / défaites de chacun, mis à jour en direct).
+- Le **score final** de l'événement une fois terminé, avec les decks
+  utilisés par chaque joueur.
+- Le **classement du défi du jour** : les points gagnés aujourd'hui
+  seulement via le Duel du jour (3 points par victoire, 1 point par
+  défaite, plafonné à 15 points/jour — mêmes règles que le classement de
+  saison, mais remis à zéro chaque nouveau jour).
+
+D'autres blocs pourront s'y ajouter facilement par la suite, comme tu
+l'avais mentionné.
+
+À noter : le chronomètre d'une manche d'événement (bouton "Lancer le
+chronomètre") était **déjà** exclusivement déclenché par toi,
+l'organisateur — jamais par les joueurs — et **déjà synchronisé** pour
+tout le monde (basé sur l'heure de lancement enregistrée côté serveur,
+pas sur l'horloge de chacun). Ce point de ta demande était donc déjà en
+place ; seul l'écran d'affichage ci-dessus, pour le montrer à tous sans
+téléphone, est vraiment nouveau dans cette version.
+
 ## Ce qui n'est pas encore fait (prochaine étape)
 
 - Un classement général "toutes saisons confondues" (le système de saisons
@@ -1058,7 +1197,11 @@ décorations/thèmes/tags).
 - La suppression d'un jeu (TCG) une fois créé — volontairement non permise,
   car déjà référencé par l'historique des matchs et des événements passés.
 - La mise à jour en direct du profil d'un joueur déjà connecté quand
-  l'organisateur lui attribue quelque chose (voir la limite ci-dessus).
+  l'organisateur lui attribue quelque chose (voir la limite ci-dessus) —
+  même limite pour la récompense de parrainage : le filleul et le
+  parrain la voient apparaître dans Réglages après reconnexion (ou à
+  l'ouverture suivante de l'appli), pas forcément à l'instant même où
+  elle est accordée s'ils sont déjà connectés.
 - Les **statistiques de victoire par deck/archétype** (ex. "quel deck
   gagne le plus", taux de victoire par élément) — pour l'instant, seule
   la déclaration/révélation du deck joué à chaque duel/événement est en

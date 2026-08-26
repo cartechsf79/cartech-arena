@@ -48,9 +48,12 @@ const usersCol = collection(db, "users");
 const duelsCol = collection(db, "dailySession", "current", "duels");
 const pointAdjustmentsCol = collection(db, "pointAdjustments");
 
-const WIN_POINTS = 3;
-const LOSS_POINTS = 1;
-const MAX_POINTS_PER_DAY = 15;
+// Exportées (plutôt que gardées privées à ce module) pour être réutilisées
+// telles quelles par js/organizer-display.js — classement des points du Duel
+// du jour du jour même, avec exactement les mêmes règles qu'ici.
+export const WIN_POINTS = 3;
+export const LOSS_POINTS = 1;
+export const MAX_POINTS_PER_DAY = 15;
 // Couleur du tag de saison, auto-créé à chaque nouvelle saison — un ton "or"
 // distinct des tags que l'organisateur crée normalement, pour qu'il soit
 // facilement reconnaissable dans la liste des tags.

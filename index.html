@@ -107,6 +107,7 @@
         <button class="btn btn-primary" id="btn-open-event" type="button">🏆 Événement</button>
         <button class="btn btn-ghost" id="btn-open-season" type="button">🏅 Saison actuelle</button>
         <button class="btn btn-ghost" id="btn-open-event-history" type="button">📜 Historique des événements</button>
+        <button class="btn btn-ghost" id="btn-open-spectator" type="button">👀 Mode spectateur</button>
 
         <!-- Visible uniquement pour le compte organisateur -->
         <div class="organizer-panel organizer-only" style="display:none;">
@@ -114,6 +115,7 @@
           Le « Duel du jour » et l'« Événement » se gèrent depuis les boutons ci-dessus.
           <button class="btn btn-ghost" id="btn-open-organizer-catalog" type="button" style="margin-top:10px;">🛡️ Décorations, thèmes, tags &amp; jeux</button>
           <button class="btn btn-ghost" id="btn-open-dashboard" type="button" style="margin-top:10px;">📊 Tableau de bord</button>
+          <button class="btn btn-ghost" id="btn-open-organizer-display" type="button" style="margin-top:10px;">📺 Écran d'affichage</button>
         </div>
 
         <button class="btn btn-ghost" id="btn-logout" type="button">Se déconnecter</button>
@@ -231,6 +233,13 @@
         <p class="settings-note">Certains tags sont disponibles pour tout le monde, d'autres sont débloqués par l'organisateur. Affiche jusqu'à 5 tags à la fois sur ton profil.</p>
         <div class="chip-grid" id="tags-grid"></div>
         <p class="settings-note" id="tags-active-count">0/5 tags affichés sur ton profil.</p>
+      </div>
+
+      <!-- Parrainage -->
+      <div class="card settings-section">
+        <h3>🎁 Parrainage</h3>
+        <p class="settings-note" id="referral-status"></p>
+        <p class="settings-note" id="referral-count">Chargement…</p>
       </div>
 
       <!-- Rechercher un joueur / voir un profil -->
@@ -361,6 +370,7 @@
             <label for="admin-tag-color">Couleur</label>
             <input type="color" id="admin-tag-color" value="#8b5cf6">
             <label class="checkbox-label"><input type="checkbox" id="admin-tag-default"> Disponible pour tout le monde dès la création du compte</label>
+            <label class="checkbox-label"><input type="checkbox" id="admin-tag-referral"> 🎁 Récompense du système de parrainage (« the godfather ») — accordée automatiquement aux 2 comptes une fois le premier duel du filleul joué</label>
             <button class="btn btn-primary" type="submit" id="admin-tag-submit">Créer le tag</button>
             <button class="btn btn-ghost" type="button" id="admin-tag-cancel" style="display:none;">Annuler la modification</button>
           </form>
@@ -443,6 +453,41 @@
   </div>
 
   <!-- ============================================================ -->
+  <!-- ÉCRAN : Mode spectateur (lecture seule, tout compte connecté) -->
+  <!-- ============================================================ -->
+  <div class="view" id="view-spectator">
+    <div class="app-wrap settings-wrap">
+      <div class="settings-header">
+        <button class="icon-btn" id="btn-close-spectator" type="button" title="Retour">←</button>
+        <h1 class="settings-title">👀 Mode spectateur</h1>
+      </div>
+
+      <p class="settings-note" id="spec-nothing" style="display:none;">Rien à voir pour l'instant — reviens quand un duel du jour ou un événement sera en cours (ou terminé aujourd'hui) !</p>
+      <div class="card settings-section" id="spec-duels" style="display:none;"></div>
+      <div class="card settings-section" id="spec-event" style="display:none;"></div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- ÉCRAN : Écran d'affichage organisateur (pensé pour un 2e écran -->
+  <!-- installé en boutique — chronomètre, placements, score final,   -->
+  <!-- classement du défi du jour) -->
+  <!-- ============================================================ -->
+  <div class="view" id="view-organizer-display">
+    <div class="app-wrap settings-wrap">
+      <div class="settings-header">
+        <button class="icon-btn" id="btn-close-organizer-display" type="button" title="Retour">←</button>
+        <h1 class="settings-title">📺 Écran d'affichage</h1>
+      </div>
+
+      <p class="settings-note" id="orgdisp-nothing" style="display:none;">Rien à afficher pour l'instant — reviens quand un événement sera en cours/terminé, ou que des duels du jour auront été joués aujourd'hui.</p>
+      <div class="card settings-section" id="orgdisp-event-live" style="display:none;"></div>
+      <div class="card settings-section" id="orgdisp-event-final" style="display:none;"></div>
+      <div class="card settings-section" id="orgdisp-today-leaderboard" style="display:none;"></div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
   <!-- ÉCRAN : Tableau de bord organisateur -->
   <!-- ============================================================ -->
   <div class="view" id="view-dashboard">
@@ -456,6 +501,32 @@
       <div class="card settings-section" id="dash-weekly"></div>
       <div class="card settings-section" id="dash-games"></div>
       <div class="card settings-section" id="dash-regulars"></div>
+    </div>
+  </div>
+
+  <!-- Modale : « As-tu été parrainé ? » (affichée une seule fois, juste après une inscription) -->
+  <div class="overlay" id="overlay-referral">
+    <div class="modal">
+      <div id="referral-step-ask">
+        <h3>🎁 As-tu été parrainé ?</h3>
+        <p class="settings-note">Si un joueur t'a invité à rejoindre Car'Tech Arena, indique son pseudo — vous recevrez tous les deux une petite récompense une fois ton premier duel du jour joué.</p>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" id="btn-referral-no">Non</button>
+          <button class="btn btn-primary" type="button" id="btn-referral-yes">Oui</button>
+        </div>
+      </div>
+      <div id="referral-step-pseudo" style="display:none;">
+        <h3>🎁 Pseudo de ton parrain</h3>
+        <form id="form-referral-pseudo">
+          <input type="text" id="referral-pseudo-input" placeholder="Pseudo exact">
+          <p class="dd-error" id="referral-error"></p>
+          <div class="modal-actions">
+            <button class="btn btn-ghost" type="button" id="btn-referral-back">← Retour</button>
+            <button class="btn btn-ghost" type="button" id="btn-referral-skip">Passer</button>
+            <button class="btn btn-primary" type="submit">Confirmer</button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 
@@ -513,5 +584,7 @@
   <script type="module" src="js/event.js"></script>
   <script type="module" src="js/season.js"></script>
   <script type="module" src="js/dashboard.js"></script>
+  <script type="module" src="js/spectator.js"></script>
+  <script type="module" src="js/organizer-display.js"></script>
 </body>
 </html>

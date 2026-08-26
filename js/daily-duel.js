@@ -13,10 +13,11 @@ import {
   collection,
   onSnapshot,
   serverTimestamp,
+  arrayUnion,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 import { db } from "./firebase-init.js";
-import { $, getCurrentProfile, getCurrentUid, showToast, friendlyError, renderAvatar, hideAllViews, openPlayerProfileModal } from "./app.js";
+import { $, getCurrentProfile, getCurrentUid, renderProfile, showToast, friendlyError, renderAvatar, hideAllViews, openPlayerProfileModal } from "./app.js";
 import { FORMATS, findFormat } from "./catalog.js";
 import {
   getAllGames,
@@ -26,6 +27,7 @@ import {
   elementsPickerHtml,
   wireElementsPicker,
   elementIconsHtml,
+  findReferralRewardTag,
 } from "./live-catalog.js";
 import { showSeasonScreen } from "./season.js";
 
@@ -71,6 +73,16 @@ let lastIncomingDuelId = null;
 // affiché jusqu'à ce que le joueur le ferme) — voir revealFinishedDuel.
 let justFinishedDuel = null; // { duel, myElements, oppElements } | null
 let duelsLoadedOnce = false;
+
+// IDs de duels déjà traités pour la détection "vient de se terminer" —
+// indispensable en plus de la simple comparaison next-vs-duels ci-dessous :
+// maybeGrantReferralReward() écrit sur users/{uid}, ce qui redéclenche CE
+// MÊME écouteur onSnapshot (le mock de test notifie tous les écouteurs à
+// chaque écriture, de façon synchrone et réentrante) AVANT que "duels" ait pu
+// être réassigné à "next" plus bas — sans ce garde-fou, la comparaison
+// retrouve indéfiniment le même duel "juste terminé" et rappelle
+// maybeGrantReferralReward en boucle synchrone jusqu'au débordement de pile.
+const handledFinishedDuelIds = new Set();
 
 function isOrganizer() {
   return getCurrentProfile()?.role === "organisateur";
@@ -141,10 +153,18 @@ function startListening() {
         const uid = myUid();
         const finishedNow = next.find((d) => {
           if (d.status !== "termine" || (d.fromUid !== uid && d.toUid !== uid)) return false;
+          if (handledFinishedDuelIds.has(d.id)) return false;
           const prev = duels.find((p) => p.id === d.id);
           return !prev || prev.status !== "termine";
         });
-        if (finishedNow) revealFinishedDuel(finishedNow);
+        if (finishedNow) {
+          handledFinishedDuelIds.add(finishedNow.id);
+          revealFinishedDuel(finishedNow);
+          // "duels" (l'ancien tableau, pas encore réassigné plus bas) sert à
+          // savoir si c'était mon tout premier duel du jour jamais terminé —
+          // voir maybeGrantReferralReward.
+          maybeGrantReferralReward(duels, uid);
+        }
       }
       duelsLoadedOnce = true;
       duels = next;
@@ -308,6 +328,52 @@ async function revealFinishedDuel(duel) {
   ]);
   justFinishedDuel = { duel, myElements, oppElements };
   render();
+}
+
+// ---------------------------------------------------------------------------
+// Système de parrainage : dès que MON tout premier duel du jour jamais
+// terminé (tous comptes/toutes soirées confondus, pas juste aujourd'hui)
+// vient de se conclure, et que j'ai un parrain enregistré (voir la modale
+// d'inscription dans app.js) pas encore récompensé, les DEUX comptes
+// reçoivent le tag marqué "récompense de parrainage" par l'organisateur
+// (voir isValidSelfReferralTagGrant/isValidCrossReferralGrant dans
+// firestore.rules pour la contre-vérification côté serveur). Sans effet si
+// l'organisateur n'a pas encore créé/marqué ce tag — comme les autres
+// catalogues pas encore configurés dans cette appli.
+// ---------------------------------------------------------------------------
+function priorFinishedDuelsCount(oldDuels, uid) {
+  return (oldDuels || []).filter(
+    (d) => d.status === "termine" && (d.fromUid === uid || d.toUid === uid)
+  ).length;
+}
+
+async function maybeGrantReferralReward(oldDuels, uid) {
+  const profile = getCurrentProfile();
+  if (!profile) return;
+  const referredByUid = profile.referral?.referredByUid || null;
+  if (!referredByUid || profile.referral?.rewardGranted) return;
+  if (priorFinishedDuelsCount(oldDuels, uid) > 0) return; // pas mon 1er duel
+  const tag = findReferralRewardTag();
+  if (!tag) return;
+  try {
+    await updateDoc(doc(db, "users", uid), {
+      "tags.owned": arrayUnion(tag.id),
+      "referral.rewardGranted": true,
+    });
+    await updateDoc(doc(db, "users", referredByUid), { "tags.owned": arrayUnion(tag.id) });
+    const updated = {
+      ...profile,
+      tags: { ...profile.tags, owned: [...(profile.tags?.owned || []), tag.id] },
+      referral: { ...profile.referral, rewardGranted: true },
+    };
+    renderProfile(updated);
+    showToast(`🎁 Tag « ${tag.name} » débloqué pour toi et ton parrain !`);
+  } catch (err) {
+    // Pas grave si ça échoue (ex. tag supprimé entre-temps par
+    // l'organisateur, ou parrain supprimé) — comme pour le tag de saison
+    // (voir maybeGrantSeasonTag dans season.js), c'est purement cosmétique.
+    console.error(err);
+  }
 }
 
 function renderFinishedDuelRecap({ duel, myElements, oppElements }) {
