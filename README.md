@@ -1,6 +1,44 @@
-# Car'Tech Arena — v10
+# Car'Tech Arena — v11
 
 Cette version ajoute **3 fonctionnalités** :
+
+- **Écran d'affichage repensé pour un vrai second écran** : tout le
+  texte est agrandi et le **chronomètre de manche est bien plus gros**
+  (pensé pour être lu de loin, sur une télé au fond de la boutique). Le
+  bouton "📺 Écran d'affichage" ouvre maintenant cet écran dans un
+  **nouvel onglet du navigateur** plutôt que dans l'appli elle-même —
+  et il n'y a volontairement **plus aucun bouton pour le fermer** :
+  c'est un écran "juste les infos", en continu, que tu fermes toi-même
+  en fermant l'onglet quand tu en as besoin.
+- **Calendrier des tournois** : un nouveau bouton **"📅 Calendrier"**,
+  visible par tout le monde depuis l'accueil, qui affiche tous les
+  tournois programmés dans une vraie **vue mensuelle** (case par jour,
+  comme un calendrier classique) — pas seulement le tournoi du moment.
+  En cliquant sur un tournoi, un joueur peut s'y **inscrire à l'avance**
+  ("🙋 Je participe") même si ce n'est pas encore le tournoi en cours,
+  et voir combien de joueurs sont déjà inscrits (bouton "[N] inscrits",
+  qui déplie la liste complète au clic).
+- **Points de saison depuis les Événements** : si une saison est en
+  cours, les points gagnés pendant un Événement (tournoi) comptent
+  maintenant dans le classement de la saison — **exactement les mêmes
+  règles que le Duel du jour** (victoire = 3 pts, défaite = 1 pt,
+  plafond quotidien de 15 pts, cumulé duel + événement le même jour).
+  Avant cette version, seul le Duel du jour rapportait des points de
+  saison.
+
+Voir les 3 sections "Nouveau dans cette version" plus bas pour le détail
+complet de chacune.
+
+**Aucune republication des règles Firestore n'est nécessaire pour cette
+version** (uniquement des changements de code JS/HTML/CSS) — republie-les
+quand même par habitude si tu préfères (ça ne fait jamais de mal), mais ce
+n'est pas obligatoire cette fois-ci.
+
+---
+
+## Historique — v10
+
+Cette version ajoutait **3 fonctionnalités** :
 
 - **Mode spectateur** : un nouvel écran, accessible à tout compte
   connecté (joueur ou organisateur), qui affiche uniquement les
@@ -33,15 +71,11 @@ Cette version ajoute **3 fonctionnalités** :
   n'était nécessaire sur ce point précis, seul le nouvel écran
   d'affichage ci-dessus est vraiment nouveau.
 
-Voir les 3 sections "Nouveau dans cette version" plus bas pour le détail
-complet de chacune.
-
-**Republication des règles Firestore nécessaire pour cette version**
+Cette version nécessitait une republication des règles Firestore
 (nouveaux champs protégés `referral.referredByUid` / `referral.rewardGranted`
 sur le profil joueur, et une nouvelle règle qui autorise — de façon très
 encadrée — qu'un filleul déclenche automatiquement l'ajout du tag
-récompense sur le compte de son parrain) — voir "Mise à jour depuis une
-version précédente" plus bas.
+récompense sur le compte de son parrain).
 
 ---
 
@@ -284,16 +318,11 @@ d'avoir à activer un mode payant.
    changes"). `js/firebase-config.js` contient déjà tes vraies clés et ton
    email organisateur, pas besoin d'y retoucher.
 
-2. **Republie les règles Firestore** (règles modifiées pour la v10 —
-   nouveaux champs protégés `referral.referredByUid` /
-   `referral.rewardGranted` sur le profil joueur (parrainage), et une
-   nouvelle règle très encadrée qui permet à un filleul de déclencher
-   l'ajout du tag récompense sur le compte de son parrain (uniquement ce
-   tag précis, uniquement si le parrainage est authentique, rien d'autre
-   sur le compte du parrain ne peut être modifié par ce chemin) — voir
-   plus haut — cette étape est **obligatoire** cette fois-ci ; garde de toute façon
-   l'habitude de les republier à chaque mise à jour, pour être sûr que
-   tout reste synchronisé) : Firebase Console > Firestore Database > onglet "Règles"
+2. **Republie les règles Firestore** — **pas obligatoire pour la v11**
+   (aucune règle n'a changé cette fois-ci, uniquement du code
+   JS/HTML/CSS), mais garde de toute façon l'habitude de les republier à
+   chaque mise à jour, pour être sûr que tout reste synchronisé :
+   Firebase Console > Firestore Database > onglet "Règles"
    > sélectionne TOUT le contenu déjà présent et supprime-le d'abord >
    colle tout le contenu de `firestore.rules` (vérifie qu'il commence par
    `rules_version = '2';` et finit par une accolade `}` seule sur la
@@ -1159,10 +1188,10 @@ version précédente" plus haut).
 
 ## Nouveau dans cette version — écran d'affichage organisateur
 
-Un nouveau bouton **"🖥️ Écran d'affichage"** dans l'Espace organisateur,
-réservé à ton compte organisateur. L'idée : l'ouvrir sur un second écran
-ou une télé installée en boutique, que tout le monde peut regarder,
-plutôt que chacun sorte son téléphone pour vérifier où il en est.
+Un bouton **"📺 Écran d'affichage"** dans l'Espace organisateur, réservé
+à ton compte organisateur. L'idée : l'ouvrir sur un second écran ou une
+télé installée en boutique, que tout le monde peut regarder, plutôt que
+chacun sorte son téléphone pour vérifier où il en est.
 
 Il regroupe, dans un seul écran qui se met à jour tout seul :
 
@@ -1183,15 +1212,94 @@ l'avais mentionné.
 chronomètre") était **déjà** exclusivement déclenché par toi,
 l'organisateur — jamais par les joueurs — et **déjà synchronisé** pour
 tout le monde (basé sur l'heure de lancement enregistrée côté serveur,
-pas sur l'horloge de chacun). Ce point de ta demande était donc déjà en
-place ; seul l'écran d'affichage ci-dessus, pour le montrer à tous sans
-téléphone, est vraiment nouveau dans cette version.
+pas sur l'horloge de chacun).
+
+**Depuis la v11**, cet écran a été retravaillé pour un vrai deuxième
+écran/une télé au fond de la boutique, lue de loin :
+
+- **Tout est agrandi** par rapport au reste de l'appli, et le
+  **chronomètre est nettement le plus gros élément de l'écran**
+  (facilement lisible à plusieurs mètres).
+- Le bouton "📺 Écran d'affichage" **ouvre maintenant un nouvel onglet du
+  navigateur** (plutôt que de naviguer à l'intérieur de l'appli) — il
+  reste donc affiché tout seul, dans son propre onglet, pendant que tu
+  continues à utiliser l'appli normalement sur ton téléphone/ordinateur
+  à côté.
+- **Il n'y a plus de bouton pour "fermer" cet écran** : c'est
+  volontairement un écran "juste les informations", pensé pour rester
+  affiché en continu — ferme simplement l'onglet du navigateur quand tu
+  veux l'arrêter.
+- Techniquement, ce nouvel onglet doit être ouvert **depuis un
+  navigateur où ton compte organisateur est déjà connecté** (comme
+  n'importe quel nouvel onglet du même site) — s'il te redemande de te
+  reconnecter, c'est juste que ce navigateur-là n'avait pas encore de
+  session ouverte.
+
+## Nouveau dans cette version — écran Calendrier (inscription à l'avance)
+
+Un nouveau bouton **"📅 Calendrier"**, visible depuis l'accueil par tout
+le monde (organisateur comme joueurs) — à ne pas confondre avec le petit
+calendrier "événements à venir" en bas de l'écran Événement (toujours là,
+voir plus bas) : celui-ci est un **écran à part entière**, avec une
+**vraie vue mensuelle** (une case par jour, comme un calendrier classique)
+qui montre TOUS les tournois pas encore terminés — y compris celui géré
+en ce moment depuis l'écran Événement.
+
+- Chaque jour où un tournoi est programmé affiche une petite **puce**
+  avec le nom du jeu ; un clic dessus déplie le détail du tournoi
+  (jeu, format, date, temps par manche) sous le calendrier.
+- Si le tournoi accepte encore les inscriptions, un bouton
+  **"🙋 Je participe"** permet de s'inscrire à l'avance — y compris pour
+  un tournoi qui n'est **pas** celui actuellement géré par
+  l'organisateur (même mécanisme d'inscription que depuis l'écran
+  Événement, juste appliqué au tournoi choisi dans le calendrier).
+  Comme d'habitude, l'inscription d'un joueur reste "en attente" tant
+  que toi, l'organisateur, ne l'as pas validée.
+- Un bouton **"[N] inscrits"** affiche le nombre de joueurs déjà
+  inscrits (validés) à ce tournoi ; cliquer dessus déplie la liste
+  complète de leurs pseudos.
+- Comme avant, **c'est toi qui programmes les tournois à l'avance**
+  (formulaire "Programmer un événement" depuis Événement >
+  Organisateur) — le calendrier ne fait qu'afficher ce que tu as déjà
+  programmé, il ne crée rien de lui-même.
+
+Limite actuelle : la validation des inscriptions (accepter un joueur en
+liste d'attente) reste possible uniquement pour le tournoi **actuellement
+géré** depuis l'écran Événement — un joueur qui s'inscrit depuis le
+Calendrier à un tournoi plus lointain reste "en attente" jusqu'à ce que
+ce tournoi devienne celui géré activement (le plus proche dans le
+temps parmi ceux encore programmés).
+
+## Nouveau dans cette version — points de saison depuis les Événements
+
+Si une saison est **en cours** au moment où un match d'Événement se
+termine, les points gagnés comptent maintenant dans le classement de la
+saison — **exactement les mêmes règles que le Duel du jour** :
+**3 points par victoire, 1 point par défaite**, avec le même plafond de
+**15 points par jour** — et ce plafond est **partagé** entre Duel du
+jour et Événement : un joueur qui gagne des duels ET un match
+d'événement le même jour reste plafonné une seule fois pour la journée,
+pas deux plafonds séparés. Un bye (tour où un joueur n'a personne en
+face) compte comme une victoire automatique pour les points de saison,
+comme pour le classement du tournoi lui-même.
+
+Avant cette version, seul le Duel du jour rapportait des points de
+saison — l'Événement n'y contribuait pas du tout. Le total "à vie" visible
+sur l'accueil ("Points (total)") suit la même règle et inclut donc lui
+aussi les points d'événement, pour rester cohérent avec l'écran Saison.
+Les statistiques "Victoires"/"Défaites" à vie de l'accueil, elles,
+restent volontairement propres au Duel du jour uniquement (comme avant),
+tout comme les "points cumulés" de départage en cas d'égalité dans le
+classement de saison (propres aux duels, sans équivalent naturel pour un
+match de tournoi).
 
 ## Ce qui n'est pas encore fait (prochaine étape)
 
 - Un classement général "toutes saisons confondues" (le système de saisons
-  couvre un classement PAR saison programmée, basé uniquement sur le Duel
-  du jour — pas encore un classement all-time incluant aussi l'Événement).
+  couvre un classement PAR saison programmée — depuis la v11, il inclut
+  bien les points gagnés en Événement en plus du Duel du jour, mais il
+  n'existe toujours pas d'écran dédié qui cumule TOUTES les saisons
+  passées dans un seul classement).
 - Un vrai système de départage en cas d'égalité en fin d'événement.
 - La gestion propre d'un abandon en cours d'événement.
 - La suppression d'un jeu (TCG) une fois créé — volontairement non permise,
@@ -1210,6 +1318,10 @@ téléphone, est vraiment nouveau dans cette version.
   du Duel du jour (pas encore sur les inscriptions/matchs d'Événement).
 - Le seuil de "joueur régulier" du tableau de bord (3 jours différents
   sur 30) n'est pas encore réglable depuis l'appli.
-- Le **calendrier des événements à venir** ne gère pas les événements
-  récurrents (un événement chaque semaine par ex.) — chaque date se
-  programme encore une par une.
+- Le **calendrier** (écran Calendrier comme le petit rappel dans l'écran
+  Événement) ne gère pas les événements récurrents (un événement chaque
+  semaine par ex.) — chaque date se programme encore une par une.
+- Depuis le **Calendrier**, valider une inscription en attente n'est
+  possible que pour le tournoi actuellement géré (voir la limite notée
+  plus haut) — pas encore un moyen de valider à l'avance les inscriptions
+  d'un tournoi plus lointain directement depuis cet écran.

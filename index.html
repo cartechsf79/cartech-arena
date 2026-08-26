@@ -108,6 +108,7 @@
         <button class="btn btn-ghost" id="btn-open-season" type="button">🏅 Saison actuelle</button>
         <button class="btn btn-ghost" id="btn-open-event-history" type="button">📜 Historique des événements</button>
         <button class="btn btn-ghost" id="btn-open-spectator" type="button">👀 Mode spectateur</button>
+        <button class="btn btn-ghost" id="btn-open-calendar" type="button">📅 Calendrier</button>
 
         <!-- Visible uniquement pour le compte organisateur -->
         <div class="organizer-panel organizer-only" style="display:none;">
@@ -469,14 +470,31 @@
   </div>
 
   <!-- ============================================================ -->
-  <!-- ÉCRAN : Écran d'affichage organisateur (pensé pour un 2e écran -->
-  <!-- installé en boutique — chronomètre, placements, score final,   -->
-  <!-- classement du défi du jour) -->
+  <!-- ÉCRAN : Calendrier — vue mensuelle de tous les tournois pas    -->
+  <!-- encore terminés, ouverte à tout le monde depuis l'accueil.     -->
+  <!-- ============================================================ -->
+  <div class="view" id="view-calendar">
+    <div class="app-wrap settings-wrap">
+      <div class="settings-header">
+        <button class="icon-btn" id="btn-close-calendar" type="button" title="Retour">←</button>
+        <h1 class="settings-title">📅 Calendrier</h1>
+      </div>
+
+      <div class="card settings-section" id="calendar-grid"></div>
+      <div class="card settings-section" id="calendar-detail" style="display:none;"></div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- ÉCRAN : Écran d'affichage organisateur — s'ouvre dans son PROPRE -->
+  <!-- onglet (?affichage=1, voir js/app.js et js/organizer-display.js), -->
+  <!-- pensé pour rester affiché en continu sur un 2e écran/une télé en -->
+  <!-- boutique : pas de bouton retour ici, volontairement (rien à       -->
+  <!-- "quitter" — l'utilisateur ferme l'onglet lui-même). -->
   <!-- ============================================================ -->
   <div class="view" id="view-organizer-display">
     <div class="app-wrap settings-wrap">
       <div class="settings-header">
-        <button class="icon-btn" id="btn-close-organizer-display" type="button" title="Retour">←</button>
         <h1 class="settings-title">📺 Écran d'affichage</h1>
       </div>
 

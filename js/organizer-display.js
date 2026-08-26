@@ -68,17 +68,25 @@ function formatCountdown(roundStartAt, roundMinutes) {
   return `⏱️ ${mm}:${String(ss).padStart(2, "0")} restantes`;
 }
 
-// Même sélection de "l'événement actif" que event.js (voir son long
-// commentaire) : un seul écran de vérité, pas de logique dupliquée qui
-// pourrait diverger — running d'abord, sinon le prochain programmé, sinon le
-// dernier terminé (pour laisser voir le score final juste après).
+// Écran de visualisation passive uniquement, comme le mode spectateur (voir
+// pickSpectatedEvent dans spectator.js) — PAS la même sélection que event.js
+// (son panneau organisateur a besoin de "le prochain programmé" pour la
+// gestion des inscriptions, ce qui n'a pas de sens ici). On ne montre donc
+// jamais un événement pas encore commencé ("inscription") : c'est le rôle du
+// calendrier désormais (voir showCalendarScreen dans event.js). En cours
+// d'abord, sinon le dernier terminé (pour laisser voir le score final juste
+// après) — jamais le prochain programmé, sinon un tournoi déjà planifié à
+// l'avance masquerait le score final du tournoi qui vient de se terminer,
+// alors que renderEventLiveSection/renderEventFinalSection n'affichent de
+// toute façon jamais rien pour un événement encore "inscription".
 function pickActiveEvent() {
   const running = eventsAll.find((e) => e.status === "en_cours");
-  const nextScheduled = eventsAll
-    .filter((e) => e.status === "inscription")
-    .sort((a, b) => (a.scheduledDate || "").localeCompare(b.scheduledDate || ""))[0];
-  const mostRecent = eventsAll.slice().sort((a, b) => toDate(b.createdAt) - toDate(a.createdAt))[0];
-  return running || nextScheduled || mostRecent || null;
+  if (running) return running;
+  return (
+    eventsAll
+      .filter((e) => e.status === "termine")
+      .sort((a, b) => toDate(b.finishedAt || b.createdAt) - toDate(a.finishedAt || a.createdAt))[0] || null
+  );
 }
 
 // Même logique que matchWinnerUid dans event.js : une fois "termine",
@@ -183,7 +191,7 @@ function renderEventLiveSection() {
   let html = `<h3>🏆 ${escapeHtml(activeEvent.game)} — ${findFormat(activeEvent.formatId).label}</h3>`;
   html += `<p class="settings-note">Manche ${activeEvent.currentRound}</p>`;
   html += activeEvent.roundStartAt
-    ? `<p id="orgdisp-countdown" class="dd-pill" style="font-size:1.3em;">${formatCountdown(activeEvent.roundStartAt, activeEvent.roundMinutes)}</p>`
+    ? `<p id="orgdisp-countdown">${formatCountdown(activeEvent.roundStartAt, activeEvent.roundMinutes)}</p>`
     : `<p class="settings-note">⏳ En attente du lancement du chronomètre par l'organisateur…</p>`;
 
   const registered = eventParticipants.filter((p) => p.status === "inscrit");
@@ -291,7 +299,18 @@ function render() {
 }
 
 // ---------------------------------------------------------------------------
-// Navigation
+// Navigation — cet écran s'ouvre désormais dans son PROPRE onglet/fenêtre
+// de navigateur (pensé pour rester affiché en continu sur un 2e écran/une
+// télé en boutique), pas comme un écran de plus dans l'appli : le bouton
+// "Écran d'affichage" ouvre un nouvel onglet plutôt que de naviguer sur
+// place (voir openDisplayInNewTab), et il n'y a volontairement aucun moyen
+// de "quitter" cet écran une fois ouvert — juste les informations, en
+// continu (l'utilisateur ferme l'onglet lui-même s'il veut arrêter).
+//
+// Le nouvel onglet arrive avec ?affichage=1 dans l'URL ; js/app.js détecte
+// ce paramètre juste après la connexion et, si le compte est bien
+// l'organisateur, déclenche l'évènement "cartech:enter-display-mode"
+// ci-dessous au lieu d'afficher l'écran d'accueil normal.
 // ---------------------------------------------------------------------------
 export function showOrganizerDisplayScreen() {
   if (!isOrganizer()) return;
@@ -301,14 +320,20 @@ export function showOrganizerDisplayScreen() {
   startCountdownTicker();
   render();
 }
-function closeOrganizerDisplayScreen() {
-  hideAllViews();
-  $("#view-app")?.classList.add("active");
-  stopListening();
-  stopCountdownTicker();
+
+function buildDisplayUrl() {
+  const url = new URL(location.href);
+  url.hash = "";
+  url.searchParams.set("affichage", "1");
+  return url.toString();
+}
+function openDisplayInNewTab() {
+  window.open(buildDisplayUrl(), "_blank");
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  $("#btn-open-organizer-display")?.addEventListener("click", showOrganizerDisplayScreen);
-  $("#btn-close-organizer-display")?.addEventListener("click", closeOrganizerDisplayScreen);
+  $("#btn-open-organizer-display")?.addEventListener("click", openDisplayInNewTab);
+});
+document.addEventListener("cartech:enter-display-mode", () => {
+  showOrganizerDisplayScreen();
 });

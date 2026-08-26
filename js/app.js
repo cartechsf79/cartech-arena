@@ -47,6 +47,15 @@ function broadcastProfile() {
   );
 }
 
+// L'Écran d'affichage organisateur (js/organizer-display.js) s'ouvre dans
+// son propre onglet via ?affichage=1 dans l'URL — repéré ici, une seule
+// fois à la connexion, pour aller directement dessus (sans passer par
+// l'accueil ni la modale de parrainage) au lieu du routage normal
+// ci-dessous. Voir showOrganizerDisplayScreen / openDisplayInNewTab.
+function isDisplayModeRequested() {
+  return new URLSearchParams(location.search).get("affichage") === "1";
+}
+
 // ---------------------------------------------------------------------------
 // Messages d'erreur Firebase traduits en français
 // ---------------------------------------------------------------------------
@@ -529,7 +538,9 @@ onAuthStateChanged(auth, async (user) => {
     // isNew ci-dessus pour pourquoi on se fie aux deux à la fois.
     const shouldPromptReferral = pendingReferralPrompt || isNew;
     pendingReferralPrompt = false;
-    if (shouldPromptReferral) {
+    if (isDisplayModeRequested() && profile.role === "organisateur") {
+      document.dispatchEvent(new CustomEvent("cartech:enter-display-mode"));
+    } else if (shouldPromptReferral) {
       showReferralModal(() => showAppScreen());
     } else {
       showAppScreen();

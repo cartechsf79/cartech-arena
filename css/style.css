@@ -397,3 +397,61 @@ body[data-theme="trophee-bronze"] {
 /* ---- classement de saison ---- */
 .season-row-me { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; background: rgba(139,92,246,.08); }
 .season-rank { flex: 0 0 auto; font-weight: 800; color: var(--muted); min-width: 30px; }
+
+/* ---- Écran d'affichage organisateur : pensé pour un 2e écran/une télé au
+   fond de la boutique, lu de loin — tout est agrandi par rapport au reste
+   de l'appli (pensée, elle, pour un téléphone en main), et le chronomètre
+   de manche est nettement le plus gros élément de l'écran. Ouvert dans son
+   propre onglet (voir js/organizer-display.js), sans navigation possible. */
+#view-organizer-display .app-wrap { max-width: 1100px; }
+#view-organizer-display .settings-title { font-size: 30px; }
+#view-organizer-display .card { padding: 26px 28px; }
+#view-organizer-display .settings-section { margin-bottom: 22px; }
+#view-organizer-display .settings-section h3 { font-size: 24px; margin-bottom: 8px; }
+#view-organizer-display .settings-note { font-size: 17px; }
+#view-organizer-display .manage-grid-label { font-size: 16px; margin: 20px 0 10px; }
+#view-organizer-display .dd-row { padding: 10px 0; }
+#view-organizer-display .dd-row-avatar { width: 52px; height: 52px; }
+#view-organizer-display .dd-row-name { font-size: 20px; gap: 12px; }
+#view-organizer-display .dd-pill { font-size: 15px; padding: 5px 14px; }
+#orgdisp-countdown {
+  font-size: 6.5rem; font-weight: 900; letter-spacing: 1px; text-align: center;
+  padding: 18px 10px; margin: 10px 0 4px; line-height: 1;
+  background: var(--bg); border-radius: 20px; border: 1px solid var(--panel-border);
+}
+@media (max-width: 700px) {
+  #orgdisp-countdown { font-size: 3.4rem; }
+  #view-organizer-display .settings-title { font-size: 24px; }
+}
+
+/* ---- Calendrier : vue mensuelle "case classique" des tournois à venir ---- */
+.cal-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-bottom: 12px;
+}
+.cal-month-label { font-weight: 800; font-size: 16px; text-transform: capitalize; }
+.cal-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px;
+}
+.cal-weekday {
+  text-align: center; font-size: 11px; font-weight: 800; color: var(--muted);
+  padding: 4px 0 8px;
+}
+.cal-cell {
+  min-height: 64px; padding: 5px; border-radius: 10px;
+  background: var(--bg2); border: 1px solid var(--panel-border);
+  display: flex; flex-direction: column; gap: 3px; overflow: hidden;
+}
+.cal-cell-empty { background: transparent; border-color: transparent; }
+.cal-cell-today { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.cal-cell-daynum { font-size: 11px; font-weight: 700; color: var(--muted); }
+.cal-chip {
+  border: none; cursor: pointer; text-align: left; font-size: 10px; font-weight: 700;
+  padding: 3px 6px; border-radius: 7px; background: var(--accent-grad); color: #fff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cal-chip-selected { outline: 2px solid var(--accent2); outline-offset: 1px; }
+@media (max-width: 700px) {
+  .cal-cell { min-height: 50px; }
+  .cal-chip { font-size: 9px; padding: 2px 4px; }
+}
