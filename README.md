@@ -1,6 +1,40 @@
-# Car'Tech Arena — v13
+# Car'Tech Arena — v14
 
-Cette version ajoute le **système de succès (achievements)** :
+Cette version corrige un détail du système de succès (v13) et ajoute 3
+petites améliorations demandées :
+
+- **Corrigé — dernier palier = titre, jamais tag en plus** : le dernier
+  palier de chaque famille de succès ne donne (et n'a jamais dû donner)
+  **que le titre**, pas un tag en plus. Si des comptes ont déjà reçu un
+  tag de dernier palier par erreur avant ce correctif, il ne se
+  retirera pas tout seul (l'appli n'attribue jamais deux fois le même
+  tag, mais ne retire rien non plus) — sans conséquence pratique, un
+  tag en trop dans le picker d'un joueur.
+- **Réglages — tags séparés en deux sections** : dans le picker de tag
+  du joueur (Réglages), les **"🏷️ Tags à gagner"** (créés par toi) et
+  les **"🏆 Tags de succès"** (gagnés automatiquement) apparaissent
+  maintenant dans deux groupes distincts, pour que ce soit plus clair.
+- **Calendrier — titre visible dans la liste des intéressés** : à côté
+  du pseudo de chaque joueur intéressé par une session à venir, son
+  titre actif (s'il en a un) s'affiche maintenant, comme partout
+  ailleurs dans l'appli.
+- **Installation en PWA** : une nouvelle section **"📱 Application"**
+  dans les Réglages permet d'installer Car'Tech Arena comme une icône
+  sur l'écran d'accueil du téléphone (ou de l'ordinateur), pour l'ouvrir
+  en un tap sans passer par le navigateur. Voir "Nouveau dans cette
+  version — Installation en PWA" tout en bas pour le détail (dont la
+  différence Android/iPhone).
+
+**Aucune republication des règles Firestore n'est nécessaire pour
+cette version** — tous les changements ci-dessus sont uniquement
+côté fichiers JS/HTML/CSS. Si tu as déjà republié les règles pour la
+v13 (voir plus bas), tu n'as rien de plus à faire sur Firebase.
+
+---
+
+## Historique — v13
+
+Cette version ajoutait le **système de succès (achievements)** :
 
 - **24 familles de succès** — reprenant à la fois tes toutes premières
   idées (Duels joués, Victoires d'affilée, Participation aux
@@ -15,7 +49,7 @@ Cette version ajoute le **système de succès (achievements)** :
   remplit la condition d'un palier, le **tag correspondant tombe tout
   seul** (comme le tag de saison ou la récompense de parrainage) — pas
   besoin que tu valides quoi que ce soit. Le **dernier palier** de
-  chaque famille donne en plus un **titre**.
+  chaque famille donne, lui, un **titre** (pas de tag à ce palier-là).
 - **Nouveau bouton "🏆 Succès"** sur l'écran d'accueil : ouvre un écran
   listant les 24 succès, avec pour chacun une **barre de progression
   visible** vers le prochain palier (et "Complété !" une fois le
@@ -25,7 +59,7 @@ Voir la section "Nouveau dans cette version — Système de succès" tout
 en bas pour le détail complet (dont les quelques succès qui reposent
 sur une approximation, faute de donnée exacte disponible).
 
-**Republication des règles Firestore NÉCESSAIRE pour cette version**
+**Republication des règles Firestore NÉCESSAIRE pour la v13**
 (nouvelles fonctions d'auto-attribution pour les tags ET pour les
 titres de succès) — voir "Mise à jour depuis une version précédente"
 plus bas.
@@ -1451,8 +1485,9 @@ condition d'un palier (en jouant, normalement — pas besoin d'ouvrir
 l'écran Succès pour que ça se déclenche), le **tag correspondant lui
 est attribué tout seul**, exactement comme le tag de saison ou la
 récompense de parrainage déjà en place — tu n'as **rien à valider**.
-Le **dernier palier** de chaque famille donne, en plus du tag, un
-**titre**. Le recalcul se déclenche automatiquement juste après chaque
+Le **dernier palier** de chaque famille donne, lui, un **titre** (pas
+de tag à ce palier-là — c'est le titre qui marque l'aboutissement de la
+famille). Le recalcul se déclenche automatiquement juste après chaque
 duel/match validé, et à chaque ouverture de l'écran "Succès" (qui
 rattrape aussi tout ce qui aurait pu être manqué, par exemple les
 succès déjà mérités par un joueur qui existait avant que cette version
@@ -1543,6 +1578,38 @@ soit mise en ligne).
   réalité du score. C'est le même niveau de confiance que pour le reste
   de l'appli sur ce plan Firebase gratuit (pas de Cloud Functions
   disponibles pour vérifier côté serveur).
+
+## Nouveau dans cette version — Installation en PWA
+
+Une nouvelle section **"📱 Application"** apparaît dans les Réglages
+(juste avant "Zone de danger"), avec un bouton d'installation et un
+message qui s'adapte à l'appareil :
+
+- **Android / Chrome / Edge (téléphone ou ordinateur)** : un bouton
+  **"Installer l'application"** propose directement l'installation —
+  Car'Tech Arena apparaît ensuite comme une icône sur l'écran d'accueil
+  (ou dans les applications installées), s'ouvre en un tap, en plein
+  écran, sans barre d'adresse.
+- **iPhone/iPad (Safari)** : Apple ne permet pas ce bouton — le message
+  explique la marche à suivre native : bouton de partage ⬆️ de Safari,
+  puis **"Sur l'écran d'accueil"**. C'est la seule façon d'installer une
+  app web sur iPhone, aucune appli ne peut le faire à ta place.
+- **Application déjà installée** : le message le confirme simplement,
+  pas de bouton à afficher.
+
+### Précisions techniques (pour toi)
+
+- L'appli fonctionne exactement pareil une fois installée — c'est la
+  même page web, juste ouverte sans les habillages du navigateur
+  (barre d'adresse, onglets). Rien ne change côté Firebase ni côté
+  fonctionnalités.
+- Volontairement, l'installation ne met **aucune page en cache** : à
+  chaque ouverture, l'appli va toujours chercher la dernière version en
+  ligne (comme dans un onglet de navigateur classique). C'est un choix
+  assumé pour ne jamais risquer qu'un joueur ou toi-même se retrouve
+  bloqué sur une ancienne version après une mise à jour — seulement un
+  peu moins utile hors connexion, ce qui n'a de toute façon pas de sens
+  ici (l'appli a besoin d'internet pour parler à Firebase).
 
 ## Ce qui n'est pas encore fait (prochaine étape)
 

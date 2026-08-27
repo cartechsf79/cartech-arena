@@ -65,18 +65,27 @@ function nextFamilyColor() {
   return `hsl(${hue}, 62%, 52%)`;
 }
 
+// Chaque palier a un emoji/nom d'affichage (tagEmoji/tagName) — mais SEULS
+// les paliers avant le dernier accordent vraiment un tag (tagId). Le DERNIER
+// palier de chaque famille n'accorde plus qu'un TITRE (titleId/titleEmoji/
+// titleName), jamais de tag en plus : "les succès donnent des tags, à part
+// le dernier palier qui donne un titre" — les paliers uniques (1 seul
+// palier, ex. Champion de saison/Platine) sont donc, par construction,
+// toujours du deuxième cas : titre seul, aucun tag.
 function defineFamily(key, name, icon, description, statKey, tierList) {
   const color = nextFamilyColor();
   const tiers = tierList.map((t, i) => {
+    const isLast = i === tierList.length - 1;
     const tier = {
       n: i + 1,
       threshold: t.threshold,
-      tagId: `ach_tag_${key}_${i + 1}`,
       tagEmoji: t.tagEmoji,
       tagName: t.tagName,
       color,
     };
-    if (i === tierList.length - 1) {
+    if (!isLast) {
+      tier.tagId = `ach_tag_${key}_${i + 1}`;
+    } else {
       tier.titleId = `ach_title_${key}`;
       tier.titleEmoji = t.titleEmoji || t.tagEmoji;
       tier.titleName = t.titleName || t.tagName;
@@ -248,6 +257,7 @@ export function getAchievementTagDefs() {
   const defs = [];
   ACHIEVEMENTS.forEach((fam) => {
     fam.tiers.forEach((t) => {
+      if (!t.tagId) return; // dernier palier : titre seul, pas de tag (voir defineFamily)
       defs.push({
         id: t.tagId,
         name: t.tagName,
@@ -600,7 +610,7 @@ async function grantNewlyEarned(uid, profile, progress) {
   const newTitles = [];
   progress.families.forEach((fam) => {
     fam.tiers.forEach((t, i) => {
-      if (i <= fam.reachedIdx && !ownedTags.has(t.tagId)) newTags.push(t);
+      if (t.tagId && i <= fam.reachedIdx && !ownedTags.has(t.tagId)) newTags.push(t);
     });
     if (fam.reachedIdx === fam.tiers.length - 1) {
       const last = fam.tiers[fam.tiers.length - 1];

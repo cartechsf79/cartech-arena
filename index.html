@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Car'Tech Arena</title>
 <link rel="stylesheet" href="css/style.css">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#8b5cf6">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Car'Tech Arena">
 </head>
 <body>
 
@@ -218,7 +224,7 @@
       <!-- Titre personnalisé -->
       <div class="card settings-section">
         <h3>Titre</h3>
-        <p class="settings-note">Débloqué uniquement par l'organisateur — s'affiche sous ton pseudo partout où ton profil apparaît.</p>
+        <p class="settings-note">Débloqué par l'organisateur, ou automatiquement en complétant un succès (voir "🏆 Succès" sur l'accueil) — s'affiche sous ton pseudo partout où ton profil apparaît.</p>
         <div class="chip-grid" id="titles-grid"></div>
       </div>
 
@@ -232,8 +238,8 @@
       <!-- Tags -->
       <div class="card settings-section">
         <h3>Tags</h3>
-        <p class="settings-note">Certains tags sont disponibles pour tout le monde, d'autres sont débloqués par l'organisateur. Affiche jusqu'à 5 tags à la fois sur ton profil.</p>
-        <div class="chip-grid" id="tags-grid"></div>
+        <p class="settings-note">Certains tags sont disponibles pour tout le monde, d'autres sont débloqués par l'organisateur ou obtenus automatiquement en complétant un succès. Affiche jusqu'à 5 tags à la fois sur ton profil.</p>
+        <div id="tags-grid"></div>
         <p class="settings-note" id="tags-active-count">0/5 tags affichés sur ton profil.</p>
       </div>
 
@@ -252,6 +258,13 @@
           <button class="btn btn-primary" type="submit" style="margin-top:10px;">Rechercher</button>
         </form>
         <div id="search-player-result"></div>
+      </div>
+
+      <!-- Installer l'application (PWA) -->
+      <div class="card settings-section">
+        <h3>📱 Application</h3>
+        <p class="settings-note" id="pwa-install-note">Installe Car'Tech Arena comme une app sur ton téléphone pour l'ouvrir en un tap, sans passer par le navigateur.</p>
+        <button class="btn btn-ghost" type="button" id="btn-install-pwa" style="display:none;">📲 Installer l'application</button>
       </div>
 
       <!-- Zone de danger -->
@@ -625,5 +638,6 @@
   <script type="module" src="js/spectator.js"></script>
   <script type="module" src="js/organizer-display.js"></script>
   <script type="module" src="js/achievements.js"></script>
+  <script type="module" src="js/pwa.js"></script>
 </body>
 </html>

@@ -22,7 +22,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 import { db } from "./firebase-init.js";
-import { $, getCurrentProfile, getCurrentUid, showToast, friendlyError, renderAvatar, hideAllViews } from "./app.js";
+import { $, getCurrentProfile, getCurrentUid, showToast, friendlyError, renderAvatar, hideAllViews, titleBadgeHtml } from "./app.js";
 import { getAllGames } from "./live-catalog.js";
 import { localDateStr } from "./season.js";
 
@@ -289,7 +289,10 @@ function renderDetail() {
       interestedUids.forEach((uid) => {
         const profile = usersByUid[uid];
         const pseudo = profile ? profile.pseudo : "…";
-        html += `<div class="dd-row"><div class="dd-row-avatar" data-avatar="${uid}"></div><div class="dd-row-name">${escapeHtml(pseudo)}</div></div>`;
+        // Titre actif du joueur (voir titleBadgeHtml dans app.js) : affiché
+        // juste à côté du pseudo, comme partout ailleurs où un pseudo
+        // apparaît dans l'appli.
+        html += `<div class="dd-row"><div class="dd-row-avatar" data-avatar="${uid}"></div><div class="dd-row-name">${escapeHtml(pseudo)}${profile ? titleBadgeHtml(profile) : ""}</div></div>`;
       });
     }
   }

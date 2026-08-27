@@ -584,6 +584,23 @@ async function setActiveTheme(themeId) {
 // Tags (soi-même) — jusqu'à 5 affichés en même temps parmi ceux débloqués
 // (donnés par l'organisateur, ou "par défaut" pour tout le monde).
 // ---------------------------------------------------------------------------
+// Regroupé en 2 sections pour la lisibilité : les tags "normaux" (créés à la
+// main par l'organisateur) d'un côté, les tags de succès (obtenus tout seul
+// en jouant, voir achievements.js) de l'autre — sinon les deux se
+// retrouvaient mélangés dans une seule grille, difficile à distinguer une
+// fois qu'un joueur a pas mal de succès débloqués.
+function tagChipEl(tag, isActive) {
+  const chip = document.createElement("div");
+  chip.className = "chip" + (isActive ? " active" : "");
+  chip.innerHTML = `
+    <div class="chip-swatch" style="background:${tag.color};"></div>
+    <div class="chip-label">${tagLabelHtml(tag)}</div>
+    <div class="chip-sub">${isActive ? "✅ Affiché" : "Toucher pour afficher"}</div>
+  `;
+  chip.onclick = () => toggleActiveTag(tag.id);
+  return chip;
+}
+
 function renderTagsGrid(profile) {
   const grid = $("#tags-grid");
   const counter = $("#tags-active-count");
@@ -598,18 +615,30 @@ function renderTagsGrid(profile) {
     return;
   }
 
-  usable.forEach((tag) => {
-    const isActive = active.includes(tag.id);
-    const chip = document.createElement("div");
-    chip.className = "chip" + (isActive ? " active" : "");
-    chip.innerHTML = `
-      <div class="chip-swatch" style="background:${tag.color};"></div>
-      <div class="chip-label">${tagLabelHtml(tag)}</div>
-      <div class="chip-sub">${isActive ? "✅ Affiché" : "Toucher pour afficher"}</div>
-    `;
-    chip.onclick = () => toggleActiveTag(tag.id);
-    grid.appendChild(chip);
-  });
+  const normalTags = usable.filter((t) => !t.isAchievement);
+  const achievementTags = usable.filter((t) => t.isAchievement);
+
+  if (normalTags.length) {
+    const label = document.createElement("div");
+    label.className = "manage-grid-label";
+    label.textContent = "🏷️ Tags à gagner";
+    grid.appendChild(label);
+    const normalGrid = document.createElement("div");
+    normalGrid.className = "chip-grid";
+    normalTags.forEach((tag) => normalGrid.appendChild(tagChipEl(tag, active.includes(tag.id))));
+    grid.appendChild(normalGrid);
+  }
+
+  if (achievementTags.length) {
+    const label = document.createElement("div");
+    label.className = "manage-grid-label";
+    label.textContent = "🏆 Tags de succès";
+    grid.appendChild(label);
+    const achGrid = document.createElement("div");
+    achGrid.className = "chip-grid";
+    achievementTags.forEach((tag) => achGrid.appendChild(tagChipEl(tag, active.includes(tag.id))));
+    grid.appendChild(achGrid);
+  }
 }
 
 async function toggleActiveTag(tagId) {
