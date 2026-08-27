@@ -30,6 +30,7 @@ import {
 import { FORMATS, findFormat } from "./catalog.js";
 import { getAllGames, getGameElements, elementsPickerHtml, wireElementsPicker, elementIconsHtml } from "./live-catalog.js";
 import { localDateStr } from "./season.js";
+import { refreshAchievements } from "./achievements.js";
 
 async function withErrorToast(fn) {
   try {
@@ -483,6 +484,10 @@ async function finalizeEvent() {
   }
   await updateDoc(doc(eventsCol, activeEvent.id), { status: "termine", finishedAt: serverTimestamp() });
   showToast("Événement terminé ! Résultats disponibles pour tous.");
+  // Système de succès : recalcul en tâche de fond côté organisateur (au cas
+  // où il a lui-même participé) — chaque autre joueur sera recalculé à son
+  // prochain duel/match ou à l'ouverture de l'écran Succès.
+  refreshAchievements(myUid(), getCurrentProfile());
 }
 
 // ---------------------------------------------------------------------------
@@ -552,6 +557,10 @@ async function submitEventResult(match, myResults) {
     // daterait du moment de l'appariement, pas de la résolution du match).
     ...(nextStatus === "termine" ? { resolvedAt: serverTimestamp() } : {}),
   });
+  // Système de succès : recalcul en tâche de fond après chaque match validé
+  // (voir js/achievements.js) — purement cosmétique si ça échoue, jamais
+  // attendu ici pour ne pas bloquer l'écran.
+  if (nextStatus === "termine") refreshAchievements(uid, getCurrentProfile());
 }
 
 // ---------------------------------------------------------------------------

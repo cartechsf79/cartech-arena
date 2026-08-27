@@ -212,6 +212,38 @@ input[type=range] { width: 100%; margin: 6px 0 4px; accent-color: var(--accent);
 .player-tags { margin-top: 10px; font-size: 12px; color: var(--muted); }
 .manage-grid-label { font-size: 11.5px; font-weight: 800; color: var(--muted); text-transform: uppercase; margin: 14px 0 6px; }
 
+/* ---- écran Succès : une carte par famille de succès, paliers + barre de
+   progression visible vers le prochain palier (voir js/achievements.js) ---- */
+#achievements-list { display: flex; flex-direction: column; gap: 12px; margin-top: 10px; }
+.ach-card { padding: 16px; }
+.ach-card-maxed { border-color: var(--accent2); box-shadow: 0 0 0 1px var(--accent2) inset; }
+.ach-card-header { display: flex; align-items: flex-start; gap: 12px; }
+.ach-card-icon { font-size: 24px; line-height: 1; flex: 0 0 auto; }
+.ach-card-heading { flex: 1; min-width: 0; }
+.ach-card-name { font-weight: 800; font-size: 14.5px; }
+.ach-card-desc { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+.ach-card-tier-badge {
+  flex: 0 0 auto; font-size: 12.5px; font-weight: 800; color: var(--text);
+  background: var(--bg2); border: 1px solid var(--panel-border); border-radius: 999px;
+  padding: 4px 10px; display: flex; align-items: center; gap: 5px; white-space: nowrap;
+}
+.ach-card-tier-badge span { color: var(--muted); font-weight: 700; }
+.ach-tiers-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+.ach-tier {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: var(--bg2); border: 1px solid var(--panel-border); border-radius: 10px;
+  padding: 6px 8px; min-width: 42px;
+}
+.ach-tier-emoji { font-size: 15px; }
+.ach-tier-threshold { font-size: 9.5px; color: var(--muted); font-weight: 700; }
+.ach-tier-reached { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.ach-tier-locked { opacity: .4; }
+.ach-progress-wrap { margin-top: 12px; display: flex; align-items: center; gap: 10px; }
+.ach-progress-bar { flex: 1; height: 8px; border-radius: 999px; background: var(--bg2); border: 1px solid var(--panel-border); overflow: hidden; }
+.ach-progress-fill { height: 100%; border-radius: 999px; background: var(--accent-grad); transition: width .3s ease; }
+.ach-progress-label { flex: 0 0 auto; font-size: 11.5px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ach-title-earned { margin-top: 10px; font-size: 12px; color: var(--accent2); }
+
 /* ---- victoires/défaites en couleur (partout où un total V/D est affiché) ---- */
 .stat-win { color: var(--success); font-weight: 800; }
 .stat-loss { color: var(--danger); font-weight: 800; }

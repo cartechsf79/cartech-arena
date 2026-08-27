@@ -1,6 +1,40 @@
-# Car'Tech Arena — v12
+# Car'Tech Arena — v13
 
-Cette version ajoute **2 grandes fonctionnalités** :
+Cette version ajoute le **système de succès (achievements)** :
+
+- **24 familles de succès** — reprenant à la fois tes toutes premières
+  idées (Duels joués, Victoires d'affilée, Participation aux
+  Événements, Duels Lorcana, Duels Pokémon, Perfects, Comeback à 1
+  point de vie, Score max Duel du jour) et les 16 autres imaginées
+  ensemble après (Assiduité, Polyvalent, Parrain en série,
+  Collectionneur, Fidèle à un deck, Rival, Rivalité, Points à vie,
+  Ancien de la maison, Champion de tournoi, Sur le podium, Come-back
+  kid, David contre Goliath, La poisse, Champion de saison, Platine),
+  avec 1, 3, 4 ou 5 paliers chacune.
+- **Tags et titre attribués automatiquement** : dès qu'un joueur
+  remplit la condition d'un palier, le **tag correspondant tombe tout
+  seul** (comme le tag de saison ou la récompense de parrainage) — pas
+  besoin que tu valides quoi que ce soit. Le **dernier palier** de
+  chaque famille donne en plus un **titre**.
+- **Nouveau bouton "🏆 Succès"** sur l'écran d'accueil : ouvre un écran
+  listant les 24 succès, avec pour chacun une **barre de progression
+  visible** vers le prochain palier (et "Complété !" une fois le
+  dernier palier atteint).
+
+Voir la section "Nouveau dans cette version — Système de succès" tout
+en bas pour le détail complet (dont les quelques succès qui reposent
+sur une approximation, faute de donnée exacte disponible).
+
+**Republication des règles Firestore NÉCESSAIRE pour cette version**
+(nouvelles fonctions d'auto-attribution pour les tags ET pour les
+titres de succès) — voir "Mise à jour depuis une version précédente"
+plus bas.
+
+---
+
+## Historique — v12
+
+Cette version ajoutait **2 grandes fonctionnalités** :
 
 - **Calendrier et Événement complètement indépendants** : le Calendrier
   n'est plus du tout lié aux vrais Événements (tournois joués sur
@@ -18,12 +52,8 @@ Cette version ajoute **2 grandes fonctionnalités** :
   et la décoration de chaque joueur à côté de son pseudo, les joueurs
   éliminés barrés, et le chronomètre de la manche en cours.
 
-Voir les sections "Nouveau dans cette version" plus bas pour le détail
-complet de chacune.
-
-**Republication des règles Firestore NÉCESSAIRE pour cette version**
-(nouvelle collection `calendarAnnouncements`) — voir "Mise à jour depuis
-une version précédente" plus bas.
+**Republication des règles Firestore nécessaire pour cette version**
+(nouvelle collection `calendarAnnouncements`).
 
 ---
 
@@ -347,9 +377,10 @@ d'avoir à activer un mode payant.
    changes"). `js/firebase-config.js` contient déjà tes vraies clés et ton
    email organisateur, pas besoin d'y retoucher.
 
-2. **Republie les règles Firestore** — **obligatoire pour la v12**
-   (nouvelle collection `calendarAnnouncements` pour le Calendrier
-   maintenant indépendant des Événements, voir plus haut) :
+2. **Republie les règles Firestore** — **obligatoire pour la v13**
+   (nouvelles fonctions qui autorisent un joueur à s'attribuer lui-même
+   un tag ET, pour la première fois, un titre de succès — voir "Nouveau
+   dans cette version — Système de succès" plus bas) :
    Firebase Console > Firestore Database > onglet "Règles"
    > sélectionne TOUT le contenu déjà présent et supprime-le d'abord >
    colle tout le contenu de `firestore.rules` (vérifie qu'il commence par
@@ -1401,6 +1432,117 @@ Ce tournoi à la suisse continue, lui, de n'afficher que le placement
 provisoire (comme avant) — l'arbre est spécifique au mode élimination,
 puisque c'est là que la structure "qui affronte qui à la prochaine
 manche" prend tout son sens visuellement.
+
+## Nouveau dans cette version — Système de succès
+
+Un nouveau bouton **"🏆 Succès"** est apparu sur l'écran d'accueil, à
+côté de "🏅 Saison actuelle". Il ouvre un écran qui liste les **24
+familles de succès**, chacune avec :
+
+- une **rangée de paliers** (1 à 5 selon la famille), le palier déjà
+  atteint mis en évidence et les suivants affichés verrouillés (🔒) ;
+- une **barre de progression** vers le prochain palier, avec le chiffre
+  exact ("237 / 500" par exemple) ;
+- le **titre débloqué**, affiché en clair une fois le dernier palier
+  atteint.
+
+**Attribution 100% automatique** : dès qu'un joueur remplit la
+condition d'un palier (en jouant, normalement — pas besoin d'ouvrir
+l'écran Succès pour que ça se déclenche), le **tag correspondant lui
+est attribué tout seul**, exactement comme le tag de saison ou la
+récompense de parrainage déjà en place — tu n'as **rien à valider**.
+Le **dernier palier** de chaque famille donne, en plus du tag, un
+**titre**. Le recalcul se déclenche automatiquement juste après chaque
+duel/match validé, et à chaque ouverture de l'écran "Succès" (qui
+rattrape aussi tout ce qui aurait pu être manqué, par exemple les
+succès déjà mérités par un joueur qui existait avant que cette version
+soit mise en ligne).
+
+### Les 24 familles de succès
+
+**Reprises de tes toutes premières idées :**
+
+- **Duels joués** (5 paliers : 1 / 50 / 200 / 500 / 1000) → titre 🏛️
+  Vétéran de l'Arène
+- **Victoires d'affilée** (4 paliers : 2 / 5 / 10 / 25) → titre ☄️ EN
+  FEUUUU
+- **Participation aux Événements** (4 paliers : 1 / 5 / 20 / 50) →
+  titre 🔁 Encore un tour
+- **Duels Lorcana** (3 paliers : 10 / 50 / 200) → titre 🧬 Lorcana dans
+  mes gènes
+- **Duels Pokémon** (3 paliers : 10 / 50 / 200) → titre 🧬 Pokémon dans
+  les gènes
+- **Perfects** — duel gagné en laissant l'adversaire à 0 (4 paliers : 1
+  / 3 / 6 / 15) → titre 👹 MONSTER KILL
+- **Comeback à 1 point de vie** (3 paliers : 1 / 5 / 10) → titre 🎭
+  Remontada
+- **Score max Duel du jour** (4 paliers : 1 / 10 / 25 / 50) → titre 👑
+  Empereur de la journée
+
+**Imaginées ensemble ensuite :**
+
+- **Assiduité** — jours différents joués (5 paliers : 3 / 10 / 30 / 75
+  / 150) → titre 🏠 Ici c'est chez moi
+- **Polyvalent** — duels dans CHAQUE jeu proposé (5 paliers : 5 / 15 /
+  30 / 60 / 100) → titre 🌈 L'as de tous les jeux
+- **Parrain en série** (5 paliers : 1 / 3 / 8 / 15 / 25) → titre 🌳
+  Tête de réseau
+- **Collectionneur** — tags différents possédés (5 paliers : 5 / 10 /
+  25 / 50 / 75) → titre 🗃️ Collectionneur
+- **Fidèle à un deck** — même élément/archétype (5 paliers : 3 / 8 / 15
+  / 25 / 40) → titre 🃏 Signature
+- **Rival** — adversaires différents affrontés (5 paliers : 2 / 5 / 10
+  / 15 / 25) → titre 🤝 Je connais tout le monde
+- **Rivalité** — duels rejoués contre le même adversaire (5 paliers : 3
+  / 5 / 10 / 20 / 40) → titre ⚔️ Ma Nemesis
+- **Points à vie** (5 paliers : 50 / 100 / 500 / 1000 / 2500) → titre
+  Légende Immortelle
+- **Ancien de la maison** — ancienneté du compte (5 paliers : 1 / 3 / 6
+  / 12 / 24 mois) → titre 🏛️ Ancien de la maison
+- **Champion de tournoi** — Événements remportés (4 paliers : 1 / 3 / 8
+  / 15) → titre ⚜️ Grand Champion
+- **Sur le podium** — top 3 en fin de saison (4 paliers : 1 / 5 / 10 /
+  25) → titre 🏆 Increvable
+- **Come-back kid** — perdre la 1ère manche en suisse mais finir sur le
+  podium (4 paliers : 1 / 3 / 5 / 10) → titre 🎭 Le roi du comeback
+- **David contre Goliath** — battre un adversaire avec plus de
+  victoires à vie que toi (4 paliers : 1 / 3 / 5 / 10) → titre David
+  contre Goliath
+- **La poisse** — défaites d'affilée (4 paliers : 3 / 5 / 8 / 12) →
+  titre 🐌 La poisse ultime
+- **Champion de saison** — 1er au classement final d'une saison (1
+  palier) → titre 👑 Champion de saison
+- **Platine** — débloquer tous les autres succès (1 palier) → titre 💠
+  Platine
+
+### Quelques précisions techniques (pour toi, pas pour les joueurs)
+
+- **"Comeback à 1 point de vie"** ne se déclenche que sur les jeux pour
+  lesquels tu as configuré une condition de victoire **"points de vie"**
+  (voir "condition de victoire par jeu" plus haut) — sans ça, un duel
+  n'a tout simplement pas de notion de "point de vie restant" à
+  regarder. Rien à faire de ton côté si tu l'as déjà configurée sur
+  Pokémon/Lorcana/etc.
+- **"David contre Goliath"** compare le nombre de victoires à vie
+  actuel des deux joueurs (pas au moment exact du duel) — un joueur qui
+  a beaucoup progressé depuis pourrait ne plus "compter" comme un
+  outsider pour un vieux duel. Cas rare, effet mineur.
+- **"Sur le podium" et "Champion de saison"** ne comptent que les
+  saisons déjà terminées (date de fin dans le passé) — la saison en
+  cours n'a pas encore de classement "définitif" tant qu'elle n'est pas
+  finie.
+- Les tags/titres de succès n'existent **pas** comme catalogue Firestore
+  (rien à publier/dépublier, rien créé à la main) — ils n'apparaissent
+  donc jamais dans tes listes de gestion "Décorations, thèmes, tags &
+  jeux". Un joueur peut en revanche les choisir comme tag actif ou
+  comme titre affiché, exactement comme les autres.
+- Comme pour les scores de duel auto-déclarés, l'appli fait confiance
+  au joueur sur la condition elle-même (avoir vraiment joué 500 duels,
+  etc.) — les règles Firestore ne vérifient que la forme de
+  l'attribution (un seul tag/titre de succès ajouté à la fois), pas la
+  réalité du score. C'est le même niveau de confiance que pour le reste
+  de l'appli sur ce plan Firebase gratuit (pas de Cloud Functions
+  disponibles pour vérifier côté serveur).
 
 ## Ce qui n'est pas encore fait (prochaine étape)
 

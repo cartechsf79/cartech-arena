@@ -106,6 +106,7 @@
         <button class="btn btn-primary" id="btn-open-daily-duel" type="button">⚔️ Duel du jour</button>
         <button class="btn btn-primary" id="btn-open-event" type="button">🏆 Événement</button>
         <button class="btn btn-ghost" id="btn-open-season" type="button">🏅 Saison actuelle</button>
+        <button class="btn btn-ghost" id="btn-open-achievements" type="button">🏆 Succès</button>
         <button class="btn btn-ghost" id="btn-open-event-history" type="button">📜 Historique des événements</button>
         <button class="btn btn-ghost" id="btn-open-spectator" type="button">👀 Mode spectateur</button>
         <button class="btn btn-ghost" id="btn-open-calendar" type="button">📅 Calendrier</button>
@@ -423,6 +424,21 @@
   </div>
 
   <!-- ============================================================ -->
+  <!-- ÉCRAN : Succès -->
+  <!-- ============================================================ -->
+  <div class="view" id="view-achievements">
+    <div class="app-wrap settings-wrap">
+      <div class="settings-header">
+        <button class="icon-btn" id="btn-close-achievements" type="button" title="Retour">←</button>
+        <h1 class="settings-title">🏆 Succès</h1>
+      </div>
+
+      <p class="settings-note" id="achievements-summary">Calcul de ta progression…</p>
+      <div id="achievements-list"></div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
   <!-- ÉCRAN : Événement -->
   <!-- ============================================================ -->
   <div class="view" id="view-event">
@@ -608,5 +624,6 @@
   <script type="module" src="js/dashboard.js"></script>
   <script type="module" src="js/spectator.js"></script>
   <script type="module" src="js/organizer-display.js"></script>
+  <script type="module" src="js/achievements.js"></script>
 </body>
 </html>

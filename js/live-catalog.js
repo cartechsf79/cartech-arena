@@ -24,6 +24,13 @@ import {
 
 import { db } from "./firebase-init.js";
 import { DECORATIONS, THEMES, findTheme, GAMES } from "./catalog.js";
+// Import circulaire volontaire et sans danger : achievements.js importe
+// aussi getAllGames/getGameWinCondition d'ici, mais ni l'un ni l'autre
+// fichier n'utilise ces imports au niveau racine du module (seulement à
+// l'intérieur de fonctions) — les liaisons ES module se résolvent bien à
+// l'appel. Voir le commentaire en tête de getAllTags/getAllTitles ci-dessous
+// pour le pourquoi de cette fusion.
+import { getAchievementTagDefs, getAchievementTitleDefs } from "./achievements.js";
 
 const decorationsCol = collection(db, "decorations");
 const themesCol = collection(db, "themes");
@@ -150,8 +157,16 @@ export function getAllThemes() {
   const custom = liveThemes.map((t) => ({ ...t, builtin: false, locked: true }));
   return [...builtins, ...custom];
 }
-export function getAllTags() {
-  return liveTags.slice();
+// { includeAchievements } : les tags de succès (voir achievements.js) ne
+// sont PAS de "vrais" tags Firestore (rien à publier/dépublier/supprimer),
+// donc jamais inclus par défaut — pour ne jamais polluer les écrans de
+// gestion de l'organisateur (renderTagManageList / grantableTags dans
+// settings.js, les seuls appelants actuels de getAllTags()). Seuls
+// usableTagsFor() (le picker du JOUEUR pour ses tags actifs) et
+// findAnyTag() (résolution d'un tag déjà possédé, affiché n'importe où) les
+// incluent, en passant explicitement includeAchievements:true.
+export function getAllTags({ includeAchievements = false } = {}) {
+  return includeAchievements ? [...liveTags.slice(), ...getAchievementTagDefs()] : liveTags.slice();
 }
 // Les jeux sont de simples chaînes (pas besoin d'id/couleur/image) : la
 // liste fusionne les jeux "de base" de catalog.js avec les noms ajoutés par
@@ -177,11 +192,19 @@ export function findAnyProfileBg(id) {
 // Titres personnalisés (affichés sous le pseudo) : pas de "builtin" non plus
 // (aucun titre de base), même fonctionnement publié/non publié que les
 // fonds de profil et les décorations.
-export function getAllTitles({ includeUnpublished = false } = {}) {
-  return liveTitles.filter((t) => includeUnpublished || t.published);
+// { includeAchievements } : même logique que getAllTags() ci-dessus — les
+// titres de succès sont créés avec published:false (jamais affichés à qui
+// ne les possède pas encore) et jamais listés dans le panneau de gestion de
+// l'organisateur. Seul renderTitlesGrid() (settings.js, le picker du joueur
+// pour SON titre actif) passe includeAchievements:true ; ce dernier filtre
+// déjà ensuite par `published || owned.includes(id)`, donc un titre de
+// succès non publié n'apparaît là que s'il est déjà possédé.
+export function getAllTitles({ includeUnpublished = false, includeAchievements = false } = {}) {
+  const base = liveTitles.filter((t) => includeUnpublished || t.published);
+  return includeAchievements ? [...base, ...getAchievementTitleDefs()] : base;
 }
 export function findAnyTitle(id) {
-  return liveTitles.find((t) => t.id === id) || null;
+  return liveTitles.find((t) => t.id === id) || getAchievementTitleDefs().find((t) => t.id === id) || null;
 }
 
 // Condition de victoire configurée pour un jeu (de base ou personnalisé) —
@@ -323,7 +346,7 @@ export function findAnyTheme(id) {
   return getAllThemes().find((t) => t.id === id) || null;
 }
 export function findAnyTag(id) {
-  return liveTags.find((t) => t.id === id) || null;
+  return liveTags.find((t) => t.id === id) || getAchievementTagDefs().find((t) => t.id === id) || null;
 }
 
 // Le tag de récompense du système de parrainage — au plus un à la fois, créé/
@@ -351,9 +374,10 @@ export function isTagUsable(tagId, owned) {
 // a tout de débloqué d'office sur son propre compte, pour pouvoir tester
 // n'importe quel tag sans avoir à se l'attribuer lui-même.
 export function usableTagsFor(profile) {
-  if (profile?.role === "organisateur") return liveTags;
+  const all = getAllTags({ includeAchievements: true });
+  if (profile?.role === "organisateur") return all;
   const owned = new Set(profile?.tags?.owned || []);
-  return liveTags.filter((t) => t.defaultOwned || owned.has(t.id));
+  return all.filter((t) => t.defaultOwned || owned.has(t.id));
 }
 
 // Icône d'un tag à afficher : l'image personnalisée est prioritaire si elle

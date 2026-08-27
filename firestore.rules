@@ -131,6 +131,44 @@ service cloud.firestore {
     }
 
     // --------------------------------------------------------------------
+    // Succès (achievements) : le catalogue des succès (paliers, tags et
+    // titres qu'ils rapportent) vit uniquement côté client (voir
+    // js/achievements.js) — pas de document Firestore par succès, donc pas
+    // d'exists()/get() possible pour vérifier la légitimité comme pour les
+    // tags de saison/parrainage ci-dessus. À la place, on réserve un espace
+    // de noms d'ids ("ach_tag_"/"ach_title_", jamais produit par un id
+    // auto-généré d'un tag/titre créé par l'organisateur) et on n'autorise,
+    // comme pour les tags de saison/parrainage, que l'ajout d'EXACTEMENT un
+    // id de ce type à la fois (jamais un retrait, jamais un id "normal") —
+    // un joueur qui débloque plusieurs paliers d'un coup (ex: à la toute
+    // première ouverture de l'écran Succès après la mise en ligne de cette
+    // fonctionnalité) reçoit donc plusieurs écritures successives, une par
+    // tag/titre, jamais une seule écriture groupée. Comme pour tout ce
+    // système basé sur des scores auto-déclarés par les duels, on fait
+    // confiance au client sur la CONDITION elle-même (avoir vraiment joué
+    // 500 duels, etc.) — seule la structure de l'écriture est vérifiée ici,
+    // exactement comme pour les scores de duel.
+    // --------------------------------------------------------------------
+    function tagIsAchievementGrantable(tagId) {
+      return tagId.matches('^ach_tag_.*');
+    }
+    function isValidSelfAchievementTagGrant(oldOwned, newOwned) {
+      return newOwned.size() == oldOwned.size() + 1
+        && newOwned == oldOwned.concat([newOwned[newOwned.size() - 1]])
+        && !(newOwned[newOwned.size() - 1] in oldOwned)
+        && tagIsAchievementGrantable(newOwned[newOwned.size() - 1]);
+    }
+    function titleIsAchievementGrantable(titleId) {
+      return titleId.matches('^ach_title_.*');
+    }
+    function isValidSelfAchievementTitleGrant(oldOwned, newOwned) {
+      return newOwned.size() == oldOwned.size() + 1
+        && newOwned == oldOwned.concat([newOwned[newOwned.size() - 1]])
+        && !(newOwned[newOwned.size() - 1] in oldOwned)
+        && titleIsAchievementGrantable(newOwned[newOwned.size() - 1]);
+    }
+
+    // --------------------------------------------------------------------
     // Calendrier des tournois (Task #44) : de simples annonces "date + jeu"
     // totalement indépendantes des vrais événements (voir events/{eventId}
     // plus bas) — aucune validation par l'organisateur nécessaire ici,
@@ -265,11 +303,13 @@ service cloud.firestore {
           // Titre personnalisé : même "laisser-passer" .get() que le fond de
           // profil ci-dessus (comptes créés avant cette version sans champ
           // "title" du tout).
-          && request.resource.data.get('title', {}).get('owned', []) == resource.data.get('title', {}).get('owned', [])
+          && (request.resource.data.get('title', {}).get('owned', []) == resource.data.get('title', {}).get('owned', [])
+              || isValidSelfAchievementTitleGrant(resource.data.get('title', {}).get('owned', []), request.resource.data.get('title', {}).get('owned', [])))
           && (!('tags' in resource.data)
               || request.resource.data.tags.get('owned', []) == resource.data.tags.get('owned', [])
               || isValidSelfSeasonTagGrant(resource.data.tags.get('owned', []), request.resource.data.tags.get('owned', []))
-              || isValidSelfReferralTagGrant(resource.data.tags.get('owned', []), request.resource.data.tags.get('owned', [])))
+              || isValidSelfReferralTagGrant(resource.data.tags.get('owned', []), request.resource.data.tags.get('owned', []))
+              || isValidSelfAchievementTagGrant(resource.data.tags.get('owned', []), request.resource.data.tags.get('owned', [])))
           // Ces 3 invariants valident un NOUVEL "active" (il doit être dans
           // "owned"), mais laissent toujours passer une écriture qui ne
           // touche pas du tout à ce champ-là (comparaison à la valeur

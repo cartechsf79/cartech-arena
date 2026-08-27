@@ -510,7 +510,9 @@ function renderTitlesGrid(profile) {
   noneChip.onclick = () => setActiveTitle(null);
   grid.appendChild(noneChip);
 
-  const visible = getAllTitles({ includeUnpublished: true }).filter((t) => t.published || owned.includes(t.id));
+  const visible = getAllTitles({ includeUnpublished: true, includeAchievements: true }).filter(
+    (t) => t.published || owned.includes(t.id)
+  );
   visible.forEach((title) => {
     const isOwned = isOrg || owned.includes(title.id);
     const chip = document.createElement("div");

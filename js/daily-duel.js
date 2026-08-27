@@ -30,6 +30,7 @@ import {
   findReferralRewardTag,
 } from "./live-catalog.js";
 import { showSeasonScreen } from "./season.js";
+import { refreshAchievements } from "./achievements.js";
 
 // Toute action Firestore peut échouer (règles de sécurité, réseau...) — on
 // affiche toujours une erreur lisible plutôt que de laisser planter en
@@ -164,6 +165,12 @@ function startListening() {
           // savoir si c'était mon tout premier duel du jour jamais terminé —
           // voir maybeGrantReferralReward.
           maybeGrantReferralReward(duels, uid);
+          // Système de succès : recalcul en tâche de fond après chaque duel
+          // validé, pour que les tags/titres mérités tombent tout de suite
+          // sans attendre que le joueur ouvre l'écran "Succès" — voir
+          // js/achievements.js (purement cosmétique si ça échoue, jamais
+          // attendu ici pour ne pas bloquer l'écran).
+          refreshAchievements(uid, getCurrentProfile());
         }
       }
       duelsLoadedOnce = true;
