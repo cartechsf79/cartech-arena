@@ -35,6 +35,13 @@ body {
   background: var(--accent-grad); display: flex; align-items: center; justify-content: center;
   font-size: 19px; box-shadow: 0 4px 14px rgba(139,92,246,.45);
 }
+/* Logo personnalisé importé par l'organisateur (voir applyAppLogo dans
+   js/app.js, qui pose l'image en style inline "background-image") --
+   l'emoji est masqué et l'image remplit la bulle, forme/taille inchangées. */
+.brand .logo.logo-custom {
+  background-size: cover; background-position: center;
+  font-size: 0;
+}
 .brand h1 { font-size: 21px; margin: 0; letter-spacing: .3px; }
 .brand small { display: block; color: var(--muted); font-size: 11.5px; font-weight: 500; }
 

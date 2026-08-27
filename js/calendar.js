@@ -271,13 +271,22 @@ function renderDetail() {
 
   const interestedUids = ann.interested || [];
   const iAmIn = interestedUids.includes(myUid());
+  // Le jour J (date de l'annonce == aujourd'hui), on n'affiche plus le
+  // bouton "intéressé(e)" -- il n'y a plus de sens à s'inscrire une fois
+  // qu'on est sur la case de l'événement -- mais la liste des joueurs
+  // intéressés reste consultable normalement.
+  const isEventDay = ann.date === localDateStr();
 
   let html = `
     <h3>📅 ${escapeHtml(ann.date)} — ${escapeHtml(ann.game)}</h3>
     <p class="settings-note">Une simple annonce — aucune inscription ni validation nécessaire, dis juste si ça t'intéresse !</p>
-    <button class="btn ${iAmIn ? "btn-ghost" : "btn-primary"}" type="button" id="cal-btn-toggle-interest">
+    ${
+      isEventDay
+        ? ""
+        : `<button class="btn ${iAmIn ? "btn-ghost" : "btn-primary"}" type="button" id="cal-btn-toggle-interest">
       ${iAmIn ? "🙅 Je ne suis plus intéressé(e)" : "🙋 Je suis intéressé(e)"}
-    </button>
+    </button>`
+    }
     <button class="btn-mini btn-mini-ghost" type="button" id="cal-btn-toggle-list">${interestedUids.length} intéressé${interestedUids.length > 1 ? "s" : ""}</button>
   `;
 

@@ -25,7 +25,7 @@ import {
 
 import { auth, db, ORGANIZER_EMAIL } from "./firebase-init.js";
 import { DEFAULT_OWNED_THEMES } from "./catalog.js";
-import { startLiveCatalogs, stopLiveCatalogs, findAnyDecoration, findAnyTag, findAnyProfileBg, findAnyTitle, applyThemeLive, contrastTextColor, getTagIcon } from "./live-catalog.js";
+import { startLiveCatalogs, stopLiveCatalogs, findAnyDecoration, findAnyTag, findAnyProfileBg, findAnyTitle, applyThemeLive, contrastTextColor, getTagIcon, getAppLogoDataUrl } from "./live-catalog.js";
 import { startHomePlayersListener, stopHomePlayersListener } from "./home-players.js";
 import { startSeasonBannerListener, stopSeasonBannerListener, startCareerStatsListener, stopCareerStatsListener, fetchCareerStats, fetchHeadToHead } from "./season.js";
 
@@ -321,6 +321,29 @@ export function titleBadgeHtml(profile) {
   return `<span class="profile-title-badge">🎖️ ${escapeHtmlLocal(title.name)}</span>`;
 }
 
+// Logo de l'appli (voir js/live-catalog.js) : appliqué uniquement à
+// #brand-logo-app (l'écran une fois connecté) — l'écran de connexion garde
+// toujours l'épée ⚔️ par défaut, aucune lecture Firestore n'y est possible
+// avant que quelqu'un soit connecté (voir firestore.rules : tout est
+// protégé par request.auth != null, aucune exception). Appelée à chaque
+// mise à jour du catalogue en direct (voir startLiveCatalogs ci-dessus) et
+// à la déconnexion (remet l'épée, sans effet visible puisque l'écran
+// connecté n'est alors plus affiché).
+export function applyAppLogo() {
+  const el = $("#brand-logo-app");
+  if (!el) return;
+  const dataUrl = getAppLogoDataUrl();
+  if (dataUrl) {
+    el.classList.add("logo-custom");
+    el.style.backgroundImage = `url("${dataUrl}")`;
+    el.textContent = "";
+  } else {
+    el.classList.remove("logo-custom");
+    el.style.backgroundImage = "";
+    el.textContent = "⚔️";
+  }
+}
+
 export function renderProfile(profile) {
   currentProfile = profile;
   broadcastProfile();
@@ -508,6 +531,7 @@ onAuthStateChanged(auth, async (user) => {
     stopSeasonBannerListener();
     stopCareerStatsListener();
     broadcastProfile();
+    applyAppLogo(); // remet l'épée par défaut sur l'écran (pas affiché avant connexion de toute façon)
     showAuthScreen();
     return;
   }
@@ -519,6 +543,7 @@ onAuthStateChanged(auth, async (user) => {
     // change pendant que le joueur est connecté).
     startLiveCatalogs(() => {
       if (currentProfile) renderProfile(currentProfile);
+      applyAppLogo();
     });
     // Liste des joueurs de l'écran d'accueil (disponible / en combat /
     // inactif) : démarrée dès la connexion elle aussi.

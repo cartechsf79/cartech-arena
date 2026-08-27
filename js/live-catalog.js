@@ -32,12 +32,23 @@ import { DECORATIONS, THEMES, findTheme, GAMES } from "./catalog.js";
 // pour le pourquoi de cette fusion.
 import { getAchievementTagDefs, getAchievementTitleDefs } from "./achievements.js";
 
+// Titre spécial réservé au compte organisateur — jamais dans le catalogue
+// "liveTitles" (donc jamais géré/publiable depuis l'espace organisateur, et
+// jamais proposé dans la liste "attribuer un titre à un joueur"), mais
+// toujours résolvable par findAnyTitle() pour que le badge s'affiche partout
+// (calendrier, accueil joueurs, etc.) une fois que l'organisateur l'a activé
+// sur son propre compte depuis Paramètres.
+export const ORGANIZER_TITLE = { id: "title_organisateur", name: "Organisateur" };
+
 const decorationsCol = collection(db, "decorations");
 const themesCol = collection(db, "themes");
 const tagsCol = collection(db, "tags");
 const gamesCol = collection(db, "games");
 const profileBgsCol = collection(db, "profileBgs");
 const titlesCol = collection(db, "titles");
+// Réglages globaux de l'appli (pour l'instant : uniquement le logo) — un
+// SEUL document fixe ("main"), pas une collection avec plusieurs entrées.
+const appSettingsDoc = doc(db, "appSettings", "main");
 
 let liveDecorations = [];
 let liveThemes = [];
@@ -45,6 +56,7 @@ let liveTags = [];
 let liveGames = [];
 let liveProfileBgs = [];
 let liveTitles = [];
+let liveAppLogoDataUrl = null;
 let started = false;
 let listeners = [];
 
@@ -72,6 +84,10 @@ export const MAX_PROFILE_BG_BYTES = 500_000;
 // Icône d'un élément de jeu (ex. les couleurs d'encre à Lorcana) : même
 // gabarit qu'un emoji de tag (toute petite icône), donc même marge.
 export const MAX_GAME_ELEMENT_BYTES = 150_000;
+// Logo de l'appli : petite icône (40px, affichée en carré aux coins
+// arrondis) mais vue par tout le monde en permanence — même marge qu'un
+// emoji de tag.
+export const MAX_APP_LOGO_BYTES = 200_000;
 
 // ---------------------------------------------------------------------------
 // Écoute temps réel — démarrée une seule fois après connexion (voir app.js)
@@ -121,6 +137,13 @@ export function startLiveCatalogs(onUpdate) {
       document.dispatchEvent(new CustomEvent("cartech:catalogs"));
     })
   );
+  listeners.push(
+    onSnapshot(appSettingsDoc, (snap) => {
+      liveAppLogoDataUrl = snap.exists() ? snap.data().logoDataUrl || null : null;
+      onUpdate?.();
+      document.dispatchEvent(new CustomEvent("cartech:catalogs"));
+    })
+  );
 }
 
 export function stopLiveCatalogs() {
@@ -132,7 +155,23 @@ export function stopLiveCatalogs() {
   liveGames = [];
   liveProfileBgs = [];
   liveTitles = [];
+  liveAppLogoDataUrl = null;
   started = false;
+}
+
+// ---------------------------------------------------------------------------
+// Logo de l'application — un seul logo pour tout le monde (voir appSettings
+// ci-dessus). null/absent = logo par défaut (⚔️ codé en dur dans index.html,
+// jamais remplacé côté client tant qu'aucun logo personnalisé n'est défini).
+// ---------------------------------------------------------------------------
+export function getAppLogoDataUrl() {
+  return liveAppLogoDataUrl;
+}
+export async function setAppLogo(dataUrl) {
+  await setDoc(appSettingsDoc, { logoDataUrl: dataUrl, updatedAt: serverTimestamp() }, { merge: true });
+}
+export async function resetAppLogo() {
+  await setDoc(appSettingsDoc, { logoDataUrl: null, updatedAt: serverTimestamp() }, { merge: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -204,6 +243,7 @@ export function getAllTitles({ includeUnpublished = false, includeAchievements =
   return includeAchievements ? [...base, ...getAchievementTitleDefs()] : base;
 }
 export function findAnyTitle(id) {
+  if (id === ORGANIZER_TITLE.id) return ORGANIZER_TITLE;
   return liveTitles.find((t) => t.id === id) || getAchievementTitleDefs().find((t) => t.id === id) || null;
 }
 
@@ -518,6 +558,30 @@ export async function compressTagEmojiImage(file) {
   return dataUrl;
 }
 
+// Compression du logo de l'appli : même logique que l'emoji de tag
+// ci-dessus (recadré en carré au centre) mais un peu plus grand (256px de
+// base) car affiché sur toutes les tailles d'écran, y compris en tant
+// qu'élément de marque bien visible sur l'écran de connexion.
+export async function compressAppLogoImage(file) {
+  const img = await fileToImage(file);
+  const srcSize = Math.min(img.width, img.height);
+  const srcX = Math.round((img.width - srcSize) / 2);
+  const srcY = Math.round((img.height - srcSize) / 2);
+  let side = 256;
+  let dataUrl = "";
+  do {
+    const canvas = document.createElement("canvas");
+    canvas.width = side;
+    canvas.height = side;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, side, side);
+    ctx.drawImage(img, srcX, srcY, srcSize, srcSize, 0, 0, side, side);
+    dataUrl = canvas.toDataURL("image/png");
+    side -= 20;
+  } while (dataUrl.length > MAX_APP_LOGO_BYTES && side > 20);
+  return dataUrl;
+}
+
 // Compression de l'icône d'un élément de jeu (ex. une couleur d'encre à
 // Lorcana, un type à Pokémon...) — même logique que l'emoji de tag
 // ci-dessus (recadrée en carré au centre, toute petite icône).
@@ -800,6 +864,51 @@ export function downloadTagEmojiTemplate() {
   ctx.fillText(`Image carrée ${SIZE}×${SIZE} px, fond transparent conseillé (gif animé aussi accepté)`, cx, SIZE - 20);
 
   triggerDownload(canvas.toDataURL("image/png"), "gabarit-emoji-tag-512x512.png");
+}
+
+// Gabarit pour le logo de l'appli — zone visible = carré aux coins arrondis
+// (même proportion que .brand .logo dans style.css : 40px avec un rayon de
+// coin de 11px), contrairement aux gabarits ci-dessus/ci-dessous qui sont
+// tous en cercle.
+export function downloadAppLogoTemplate() {
+  const SIZE = 512;
+  const canvas = document.createElement("canvas");
+  canvas.width = SIZE;
+  canvas.height = SIZE;
+  const ctx = canvas.getContext("2d");
+
+  const cell = 16;
+  for (let y = 0; y < SIZE; y += cell) {
+    for (let x = 0; x < SIZE; x += cell) {
+      ctx.fillStyle = (x / cell + y / cell) % 2 === 0 ? "#f0f0f0" : "#ffffff";
+      ctx.fillRect(x, y, cell, cell);
+    }
+  }
+
+  const margin = 8;
+  const radius = SIZE * (11 / 40); // même ratio coin/taille que le logo réel
+
+  ctx.save();
+  ctx.strokeStyle = "#ff2d55";
+  ctx.lineWidth = 4;
+  ctx.setLineDash([14, 10]);
+  ctx.beginPath();
+  if (ctx.roundRect) {
+    ctx.roundRect(margin, margin, SIZE - margin * 2, SIZE - margin * 2, radius);
+  } else {
+    ctx.rect(margin, margin, SIZE - margin * 2, SIZE - margin * 2);
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle = "#ff2d55";
+  ctx.textAlign = "center";
+  ctx.font = "bold 20px sans-serif";
+  ctx.fillText("Zone visible = carré aux coins arrondis", SIZE / 2, 34);
+  ctx.font = "16px sans-serif";
+  ctx.fillText(`Image carrée ${SIZE}×${SIZE} px — fond plein conseillé (pas de transparence)`, SIZE / 2, SIZE - 20);
+
+  triggerDownload(canvas.toDataURL("image/png"), "gabarit-logo-application-512x512.png");
 }
 
 // Gabarit pour l'icône d'un élément de jeu — même principe que le gabarit

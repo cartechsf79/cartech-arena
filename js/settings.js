@@ -64,6 +64,12 @@ import {
   deleteProfileBg,
   getAllTitles,
   findAnyTitle,
+  ORGANIZER_TITLE,
+  getAppLogoDataUrl,
+  setAppLogo,
+  resetAppLogo,
+  compressAppLogoImage,
+  downloadAppLogoTemplate,
   createTitle,
   updateTitle,
   deleteTitle,
@@ -511,8 +517,13 @@ function renderTitlesGrid(profile) {
   grid.appendChild(noneChip);
 
   const visible = getAllTitles({ includeUnpublished: true, includeAchievements: true }).filter(
-    (t) => t.published || owned.includes(t.id)
+    (t) => t.published || owned.includes(t.id) || isOrg
   );
+  // Titre "Organisateur" : réservé au compte organisateur, uniquement sur
+  // son propre profil (ce chip n'existe nulle part ailleurs : ni dans le
+  // catalogue "liveTitles" géré depuis l'espace organisateur, ni dans la
+  // liste "attribuer un titre à un joueur").
+  if (isOrg) visible.push(ORGANIZER_TITLE);
   visible.forEach((title) => {
     const isOwned = isOrg || owned.includes(title.id);
     const chip = document.createElement("div");
@@ -1085,6 +1096,7 @@ let editingThemeId = null;
 let editingThemeBgDataUrl = null; // image de fond en cours (déjà enregistrée ou tout juste importée), ou null
 let editingTagId = null;
 let editingTagEmojiImageDataUrl = null; // emoji personnalisé (image) en cours, ou null
+let editingAppLogoDataUrl = null; // logo de l'appli tout juste importé (pas encore appliqué), ou null
 
 function renderOrganizerCatalogPanel() {
   const section = $("#section-organizer-catalog");
@@ -1092,12 +1104,81 @@ function renderOrganizerCatalogPanel() {
   const isOrg = getCurrentProfile()?.role === "organisateur";
   section.style.display = isOrg ? "" : "none";
   if (!isOrg) return;
+  renderAppLogoAdminPanel();
   renderDecoManageList();
   renderProfileBgManageList();
   renderTitleManageList();
   renderThemeManageList();
   renderTagManageList();
   renderGameManageList();
+}
+
+// ---------------------------------------------------------------------------
+// Logo de l'application (voir js/live-catalog.js et applyAppLogo dans
+// js/app.js) — un seul logo pour tout le monde, modifiable uniquement par
+// l'organisateur depuis cet écran.
+// ---------------------------------------------------------------------------
+function renderAppLogoAdminPanel() {
+  const el = $("#admin-app-logo-current");
+  if (!el) return;
+  const current = getAppLogoDataUrl();
+  el.innerHTML = current
+    ? `<img src="${current}" alt="Logo actuel" style="width:40px;height:40px;border-radius:11px;object-fit:cover;flex-shrink:0;"><span class="settings-note" style="margin:0;">Logo personnalisé actif, visible par tout le monde une fois connecté.</span>`
+    : `<div style="width:40px;height:40px;border-radius:11px;background:var(--accent-grad);display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0;">⚔️</div><span class="settings-note" style="margin:0;">Épée par défaut — aucun logo personnalisé.</span>`;
+}
+
+function updateAppLogoPreview() {
+  const preview = $("#admin-app-logo-preview");
+  const applyBtn = $("#btn-app-logo-apply");
+  if (!preview || !applyBtn) return;
+  if (editingAppLogoDataUrl) {
+    preview.src = editingAppLogoDataUrl;
+    preview.style.display = "";
+    applyBtn.disabled = false;
+  } else {
+    preview.style.display = "none";
+    applyBtn.disabled = true;
+  }
+}
+
+async function handleAppLogoFileChosen(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  if (file.size > 8_000_000) {
+    showToast("Cette image est trop lourde à importer (8 Mo max avant compression).", true);
+    return;
+  }
+  try {
+    editingAppLogoDataUrl = await compressAppLogoImage(file);
+    updateAppLogoPreview();
+  } catch (err) {
+    showToast("Impossible de lire cette image.", true);
+  }
+}
+
+async function handleAppLogoApply() {
+  if (!editingAppLogoDataUrl) return;
+  try {
+    await setAppLogo(editingAppLogoDataUrl);
+    showToast("Logo mis à jour pour tout le monde !");
+    editingAppLogoDataUrl = null;
+    $("#admin-app-logo-file").value = "";
+    updateAppLogoPreview();
+  } catch (err) {
+    showToast(friendlyError(err), true);
+  }
+}
+
+async function handleAppLogoReset() {
+  try {
+    await resetAppLogo();
+    showToast("Retour à l'épée par défaut pour tout le monde.");
+    editingAppLogoDataUrl = null;
+    $("#admin-app-logo-file").value = "";
+    updateAppLogoPreview();
+  } catch (err) {
+    showToast(friendlyError(err), true);
+  }
 }
 
 function renderDecoManageList() {
@@ -2057,6 +2138,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   $("#form-search-player").addEventListener("submit", handleSearchPlayer);
 
+  $("#admin-app-logo-file")?.addEventListener("change", handleAppLogoFileChosen);
+  $("#btn-download-app-logo-template")?.addEventListener("click", downloadAppLogoTemplate);
+  $("#btn-app-logo-apply")?.addEventListener("click", handleAppLogoApply);
+  $("#btn-app-logo-reset")?.addEventListener("click", handleAppLogoReset);
   $("#form-admin-deco")?.addEventListener("submit", handleAdminDecoSubmit);
   $("#admin-deco-cancel")?.addEventListener("click", cancelEditDeco);
   $("#btn-download-deco-template")?.addEventListener("click", downloadDecorationTemplate);

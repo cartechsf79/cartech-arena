@@ -79,7 +79,7 @@
   <div class="view" id="view-app">
     <div class="app-wrap">
       <div class="brand">
-        <div class="logo">⚔️</div>
+        <div class="logo" id="brand-logo-app">⚔️</div>
         <div>
           <h1>Car'Tech Arena</h1>
           <small>Ta boutique. Tes duels. Ton classement.</small>
@@ -291,6 +291,21 @@
       <div id="section-organizer-catalog">
         <div class="card settings-section">
           <p class="settings-note" style="margin:0;">Crée et modifie les décorations, thèmes, tags et jeux — chaque catégorie a sa propre bulle ci-dessous. Pour attribuer une décoration/un thème/un tag à un joueur, utilise Paramètres &gt; « Voir le profil d'un joueur ».</p>
+        </div>
+
+        <div class="card settings-section">
+          <h3>⚔️ Logo de l'application</h3>
+          <p class="settings-note" style="margin:0 0 8px;">Ce logo remplace l'épée ⚔️ par défaut une fois connecté, pour <strong>tout le monde</strong> — le changement apparaît automatiquement chez tous les joueurs déjà connectés, sans rien avoir à réinstaller. L'écran de connexion (avant de se connecter) garde toujours l'épée par défaut, et l'icône d'installation sur l'écran d'accueil du téléphone (PWA) n'est pas concernée non plus — ce sont deux éléments techniquement séparés qui ne peuvent pas être mis à jour à distance.</p>
+          <div id="admin-app-logo-current" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"></div>
+          <label for="admin-app-logo-file">Nouvelle image</label>
+          <input type="file" id="admin-app-logo-file" accept="image/*">
+          <img id="admin-app-logo-preview" alt="Aperçu du logo" style="display:none;max-width:64px;max-height:64px;border-radius:11px;margin:6px 0;">
+          <button class="btn btn-ghost" type="button" id="btn-download-app-logo-template">⬇️ Télécharger le gabarit (512×512)</button>
+          <p class="settings-note">Le gabarit indique la zone visible (carré aux coins arrondis) — modifie-le dans ton logiciel d'image puis importe le résultat ici.</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary" type="button" id="btn-app-logo-apply" disabled>Appliquer ce logo</button>
+            <button class="btn btn-ghost" type="button" id="btn-app-logo-reset">Revenir à l'épée par défaut</button>
+          </div>
         </div>
 
         <div class="card settings-section">

@@ -1,7 +1,65 @@
-# Car'Tech Arena — v14
+# Car'Tech Arena — v15
 
-Cette version corrige un détail du système de succès (v13) et ajoute 3
-petites améliorations demandées :
+Cette version ajoute 4 améliorations demandées :
+
+- **Toi (organisateur) voit maintenant tous les titres de succès** :
+  dans ton propre sélecteur de titre (Réglages), tu vois désormais
+  **tous** les titres de succès existants, même ceux que tu n'as
+  jamais débloqués toi-même — pratique pour les essayer/les afficher
+  sans avoir à te les attribuer artificiellement. Ça ne change rien
+  pour les joueurs normaux : eux continuent de ne voir que les titres
+  qu'ils ont réellement gagnés.
+- **Calendrier — bouton "intéressé(e)" retiré le jour J** : une fois
+  qu'une annonce du calendrier arrive à sa date (aujourd'hui), le
+  bouton "🙋 Je suis intéressé(e)" disparaît — plus la peine de
+  s'inscrire une fois qu'on est sur la case de l'événement. La liste
+  des joueurs déjà intéressés reste visible et consultable normalement.
+- **Nouveau titre exclusif "Organisateur"** : un titre spécial nommé
+  **"Organisateur"** est maintenant disponible uniquement dans ton
+  propre sélecteur de titre (Réglages) — toi seul peux te l'attribuer,
+  il n'apparaît jamais dans le catalogue de titres à publier, ni dans
+  la liste des titres que tu peux donner à un autre joueur.
+- **Logo de l'application personnalisable** : une nouvelle section
+  **"⚔️ Logo de l'application"** dans l'Espace organisateur (🛡️) te
+  permet d'importer ta propre image pour remplacer l'épée ⚔️ par
+  défaut — avec gabarit téléchargeable, comme d'habitude. **Le logo se
+  met à jour automatiquement chez tout le monde**, y compris chez les
+  joueurs déjà connectés (pas besoin de recharger la page ni de se
+  reconnecter). Deux limites techniques à connaître, voir le détail
+  juste en dessous.
+
+**⚠️ Cette version nécessite de republier les règles Firestore** —
+contrairement à la v14, le nouveau logo personnalisable ajoute un tout
+petit nouvel espace de stockage (`appSettings`) au règlement de
+sécurité, donc **il faut republier `firestore.rules`** (Firebase
+Console → Firestore Database → Règles → copier-coller le contenu du
+fichier `firestore.rules` fourni → Publier) avant que le bouton
+"Appliquer ce logo" fonctionne. Les 3 autres changements ci-dessus,
+eux, ne demandent rien de plus sur Firebase.
+
+**Les 2 limites techniques du nouveau logo :**
+
+- **L'écran de connexion (avant de se connecter) garde toujours
+  l'épée ⚔️ par défaut.** Ce n'est pas un oubli : toute lecture dans
+  Firestore nécessite d'être déjà connecté (c'est comme ça pour toute
+  l'appli, pour la sécurité), donc l'écran affiché avant la connexion
+  ne peut techniquement pas aller chercher ton logo personnalisé.
+  Seul l'écran affiché une fois connecté se met à jour.
+- **L'icône d'installation sur l'écran d'accueil du téléphone (PWA,
+  voir plus bas) ne peut pas être changée à distance.** Cette icône est
+  "figée" au moment où quelqu'un installe l'appli sur son téléphone —
+  changer le logo dans l'appli ne la met pas à jour rétroactivement
+  pour les personnes qui l'ont déjà installée (seules les nouvelles
+  installations après un futur redéploiement du site verraient une
+  icône mise à jour). C'est une limitation des téléphones/navigateurs,
+  pas de Car'Tech Arena.
+
+---
+
+## Historique — v14
+
+Cette version corrigeait un détail du système de succès (v13) et
+ajoutait 3 petites améliorations :
 
 - **Corrigé — dernier palier = titre, jamais tag en plus** : le dernier
   palier de chaque famille de succès ne donne (et n'a jamais dû donner)
@@ -25,10 +83,8 @@ petites améliorations demandées :
   version — Installation en PWA" tout en bas pour le détail (dont la
   différence Android/iPhone).
 
-**Aucune republication des règles Firestore n'est nécessaire pour
-cette version** — tous les changements ci-dessus sont uniquement
-côté fichiers JS/HTML/CSS. Si tu as déjà republié les règles pour la
-v13 (voir plus bas), tu n'as rien de plus à faire sur Firebase.
+Aucune republication des règles Firestore n'était nécessaire pour la
+v14.
 
 ---
 
