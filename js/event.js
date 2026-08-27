@@ -63,21 +63,6 @@ let countdownInterval = null;
 let showJoinForm = false;
 let joinSelectedElementIds = [];
 
-// ---------------------------------------------------------------------------
-// État local — écran Calendrier (voir plus bas) : partage les mêmes
-// écouteurs eventsCol que l'écran Événement ci-dessus (mêmes données,
-// startListening/stopListening réutilisés tels quels), mais garde son
-// propre état d'affichage (mois affiché, événement déplié, formulaire
-// d'inscription, listes de participants mises en cache).
-// ---------------------------------------------------------------------------
-let calendarMonthOffset = 0; // 0 = mois actuel, +1 = suivant, -1 = précédent
-let calendarExpandedEventId = null;
-let calendarJoinFormEventId = null;
-let calendarJoinSelectedElementIds = [];
-let calendarParticipantsByEventId = {}; // eventId -> [{id, pseudo, status, ...}]
-let calendarParticipantsLoading = {}; // eventId -> true pendant le fetch, évite les doublons
-let calendarShowParticipantsFor = null; // eventId dont la liste des inscrits est dépliée
-
 function isOrganizer() {
   return getCurrentProfile()?.role === "organisateur";
 }
@@ -96,43 +81,28 @@ function startListening() {
 
   unsubEvents = onSnapshot(eventsCol, (snap) => {
     eventsAll = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    // L'organisateur peut programmer PLUSIEURS événements à l'avance (voir
-    // Task #28 — calendrier) : ils sont tous créés avec le statut
-    // "inscription" et une date prévue (scheduledDate). Un seul est jamais
-    // vraiment "actif" (celui sur lequel portent inscriptions/appariements/
-    // matchs ci-dessous) — les autres restent visibles, en lecture seule,
-    // dans le calendrier (voir upcomingEvents()) en attendant leur tour :
+    // Un vrai Événement se joue "maintenant" (voir Task #44 — le calendrier,
+    // lui, est entièrement indépendant et vit dans calendar.js/la collection
+    // calendarAnnouncements, sans lien avec ce qui suit). Un seul événement
+    // est jamais vraiment "actif" ici :
     //   1. s'il y a un événement "en_cours" (au plus un à la fois — on ne
     //      démarre jamais un 2e événement tant que celui-ci n'est pas
     //      terminé), c'est lui l'actif ;
-    //   2. sinon, parmi ceux en "inscription", celui dont la date prévue est
-    //      la plus proche (une date manquante — anciens comptes d'avant
-    //      cette fonctionnalité — passe en premier, ce qui préserve
-    //      exactement le comportement d'avant sur une installation
-    //      existante) ;
+    //   2. sinon, le plus ancien encore en "inscription" (celui que
+    //      l'organisateur a créé mais pas encore démarré) ;
     //   3. sinon, comme avant, le dernier événement créé même "termine" —
     //      pour laisser ses participants voir leur place finale.
     const running = eventsAll.find((e) => e.status === "en_cours");
     const nextScheduled = eventsAll
       .filter((e) => e.status === "inscription")
-      .sort((a, b) => (a.scheduledDate || "").localeCompare(b.scheduledDate || ""))[0];
+      .sort((a, b) => toDate(a.createdAt) - toDate(b.createdAt))[0];
     const mostRecent = eventsAll.slice().sort((a, b) => toDate(b.createdAt) - toDate(a.createdAt))[0];
     const newActive = running || nextScheduled || mostRecent || null;
     const changed = (newActive && newActive.id) !== (activeEvent && activeEvent.id);
     activeEvent = newActive;
     if (changed) attachActiveEventListeners();
     render();
-    renderCalendarScreen();
   });
-}
-
-// Tous les événements "à venir" (programmés, pas encore l'événement actif
-// ci-dessus, pas encore terminés) — affichés en lecture seule dans le
-// calendrier, triés par date prévue.
-function upcomingEvents() {
-  return eventsAll
-    .filter((e) => e.status !== "termine" && e.id !== (activeEvent && activeEvent.id))
-    .sort((a, b) => (a.scheduledDate || "").localeCompare(b.scheduledDate || ""));
 }
 
 function attachActiveEventListeners() {
@@ -209,10 +179,6 @@ function ordinal(n) {
 // "YYYY-MM-DD" -> "JJ/MM/AAAA", même logique que formatFr dans season.js
 // (simple découpage de chaîne, pas de passage par Date() qui
 // réinterpréterait le fuseau).
-function formatFrDate(dateStr) {
-  const [y, m, d] = (dateStr || "").split("-");
-  return y && m && d ? `${d}/${m}/${y}` : "date non précisée";
-}
 function escapeHtml(str) {
   const d = document.createElement("div");
   d.textContent = str ?? "";
@@ -286,16 +252,17 @@ function undefeatedCount() {
 async function createEvent() {
   const game = $("#ev-create-game").value;
   const formatId = $("#ev-create-format").value;
-  const scheduledDate = $("#ev-create-date").value;
+  const bracketMode = $("#ev-create-bracket-mode")?.value === "elimination" ? "elimination" : "suisse";
   const roundMinutes = Math.max(1, Number($("#ev-create-minutes").value) || 10);
-  if (!scheduledDate) {
-    showToast("Choisis une date pour l'événement.", true);
-    return;
-  }
   await addDoc(eventsCol, {
     game,
     formatId,
-    scheduledDate,
+    bracketMode,
+    // Un Événement se joue "maintenant" (voir Task #44) — la date n'est
+    // plus demandée à la création, on se contente de noter celle du jour
+    // (encore utile à season.js/l'historique, mais plus jamais affichée ni
+    // saisie dans ce formulaire).
+    scheduledDate: localDateStr(),
     roundMinutes,
     status: "inscription",
     currentRound: 0,
@@ -330,10 +297,17 @@ async function kickEventParticipant(uid) {
   showToast("Joueur retiré de l'événement.");
 }
 
-async function createMatch(round, a, b) {
+// slotIndex : position du match dans sa manche, uniquement significatif en
+// mode élimination (voir Task #45/#46) — sert à savoir quels vainqueurs
+// s'affrontent à la manche suivante (advanceEliminationRound ci-dessous) et
+// à dessiner l'arbre du bracket dans l'écran d'affichage
+// (organizer-display.js). Toujours null en mode suisse (aucun ordre à
+// préserver d'une manche à l'autre).
+async function createMatch(round, a, b, slotIndex = null) {
   const format = findFormat(activeEvent.formatId);
   await addDoc(eventMatchesCol(), {
     round,
+    slotIndex,
     player1Uid: a.id,
     player1Pseudo: a.pseudo,
     player2Uid: b.id,
@@ -346,10 +320,11 @@ async function createMatch(round, a, b) {
     gamesResult2: null,
   });
 }
-async function createByeMatch(round, p) {
+async function createByeMatch(round, p, slotIndex = null) {
   const format = findFormat(activeEvent.formatId);
   await addDoc(eventMatchesCol(), {
     round,
+    slotIndex,
     player1Uid: p.id,
     player1Pseudo: p.pseudo,
     player2Uid: null,
@@ -368,12 +343,27 @@ async function createByeMatch(round, p) {
   });
 }
 
+function nextPowerOf2(n) {
+  let p = 1;
+  while (p < n) p *= 2;
+  return p;
+}
+
 async function startEvent() {
   const registered = eventParticipants.filter((p) => p.status === "inscrit");
   if (registered.length < 2) {
     showToast("Il faut au moins 2 joueurs inscrits pour démarrer.", true);
     return;
   }
+  if (activeEvent.bracketMode === "elimination") {
+    await startEventElimination(registered);
+  } else {
+    await startEventSuisse(registered);
+  }
+  showToast("Événement démarré, manche 1 appariée !");
+}
+
+async function startEventSuisse(registered) {
   const pool = shuffle(registered.slice());
   while (pool.length >= 2) {
     const a = pool.pop();
@@ -382,7 +372,36 @@ async function startEvent() {
   }
   if (pool.length === 1) await createByeMatch(1, pool[0]);
   await updateDoc(doc(eventsCol, activeEvent.id), { status: "en_cours", currentRound: 1, roundStartAt: null });
-  showToast("Événement démarré, manche 1 appariée !");
+}
+
+// Bracket à élimination directe (Task #45) : bracketSize est la prochaine
+// puissance de 2 au-dessus du nombre d'inscrits (byes pour compléter). Une
+// fois la manche 1 posée, plus jamais besoin de bye (le nombre de vainqueurs
+// reste toujours une puissance de 2, donc toujours pair) — voir
+// advanceEliminationRound ci-dessous.
+async function startEventElimination(registered) {
+  const pool = shuffle(registered.slice());
+  const n = pool.length;
+  const bracketSize = nextPowerOf2(n);
+  const byesNeeded = bracketSize - n;
+
+  let slotIndex = 0;
+  for (let i = 0; i < byesNeeded; i++) {
+    await createByeMatch(1, pool.shift(), slotIndex);
+    slotIndex++;
+  }
+  while (pool.length >= 2) {
+    const a = pool.pop();
+    const b = pool.pop();
+    await createMatch(1, a, b, slotIndex);
+    slotIndex++;
+  }
+  await updateDoc(doc(eventsCol, activeEvent.id), {
+    status: "en_cours",
+    currentRound: 1,
+    roundStartAt: null,
+    bracketTotalRounds: Math.log2(bracketSize),
+  });
 }
 
 async function startRoundTimer() {
@@ -391,6 +410,14 @@ async function startRoundTimer() {
 }
 
 async function pairNextRound() {
+  if (activeEvent.bracketMode === "elimination") {
+    await advanceEliminationRound();
+  } else {
+    await pairNextRoundSuisse();
+  }
+}
+
+async function pairNextRoundSuisse() {
   const registered = eventParticipants.filter((p) => p.status === "inscrit");
   const groups = new Map(); // victoires -> [participants]
   registered.forEach((p) => {
@@ -413,6 +440,34 @@ async function pairNextRound() {
     if (pool.length === 1) carryOver = pool; // reporté au groupe de victoires suivant
   }
   if (carryOver.length === 1) await createByeMatch(nextRound, carryOver[0]);
+
+  await updateDoc(doc(eventsCol, activeEvent.id), { currentRound: nextRound, roundStartAt: null });
+  showToast(`Manche ${nextRound} appariée !`);
+}
+
+// Bracket à élimination directe : les vainqueurs de la manche qui vient de
+// se terminer s'affrontent 2 par 2, dans l'ordre de leur slotIndex (0 vs 1
+// -> nouveau slot 0, 2 vs 3 -> nouveau slot 1, etc.) — jamais besoin de bye
+// ici, le nombre de vainqueurs est toujours pair (voir commentaire sur
+// startEventElimination).
+async function advanceEliminationRound() {
+  const nextRound = activeEvent.currentRound + 1;
+  const prevMatches = eventMatches
+    .filter((m) => m.round === activeEvent.currentRound)
+    .sort((a, b) => (a.slotIndex ?? 0) - (b.slotIndex ?? 0));
+  const winners = prevMatches.map((m) => {
+    const winnerUid = matchWinnerUid(m);
+    return eventParticipants.find((p) => p.id === winnerUid);
+  });
+
+  let slotIndex = 0;
+  for (let i = 0; i < winners.length; i += 2) {
+    const a = winners[i];
+    const b = winners[i + 1];
+    if (a && b) await createMatch(nextRound, a, b, slotIndex);
+    else if (a) await createByeMatch(nextRound, a, slotIndex);
+    slotIndex++;
+  }
 
   await updateDoc(doc(eventsCol, activeEvent.id), { currentRound: nextRound, roundStartAt: null });
   showToast(`Manche ${nextRound} appariée !`);
@@ -533,22 +588,26 @@ function renderEventOrganizerPanel() {
   }
   el.style.display = "";
 
-  const preserved = captureInputs(["ev-create-minutes", "ev-create-date"]);
+  const preserved = captureInputs(["ev-create-minutes", "ev-create-bracket-mode"]);
   let html = `<h3>🏆 Organisateur — Événement</h3>`;
 
-  // Le formulaire de création reste toujours disponible : l'organisateur
-  // peut programmer plusieurs événements à l'avance (voir le calendrier
-  // ci-dessous) — pas seulement un à la fois comme avant.
+  // Le formulaire de création reste toujours disponible : un événement se
+  // joue "maintenant" (voir Task #44 — plus de date à choisir, contrairement
+  // au Calendrier qui, lui, est indépendant et sert à annoncer des dates
+  // futures sans lien avec ceci, voir calendar.js).
   const gameOptions = getAllGames().map((g) => `<option value="${g}">${g}</option>`).join("");
   const formatOptions = FORMATS.map((f) => `<option value="${f.id}">${f.label}</option>`).join("");
   html += `
-    <div class="manage-grid-label">Programmer un événement</div>
+    <div class="manage-grid-label">Démarrer un événement</div>
     <label for="ev-create-game">Jeu</label>
     <select id="ev-create-game">${gameOptions}</select>
     <label for="ev-create-format">Format</label>
     <select id="ev-create-format">${formatOptions}</select>
-    <label for="ev-create-date">Date</label>
-    <input type="date" id="ev-create-date" required>
+    <label for="ev-create-bracket-mode">Type de tournoi</label>
+    <select id="ev-create-bracket-mode">
+      <option value="suisse">Tournoi à la suisse</option>
+      <option value="elimination">Tournoi par élimination</option>
+    </select>
     <label for="ev-create-minutes">Temps par manche (minutes)</label>
     <input type="number" id="ev-create-minutes" min="1" value="10">
     <button class="btn btn-primary" type="button" id="ev-btn-create">Programmer l'événement</button>
@@ -561,8 +620,9 @@ function renderEventOrganizerPanel() {
     return;
   }
 
+  const bracketLabel = activeEvent.bracketMode === "elimination" ? "🏹 Élimination directe" : "🇨🇭 Tournoi à la suisse";
   html += `<div class="manage-grid-label">Événement en préparation / en cours</div>`;
-  html += `<p class="settings-note">${escapeHtml(activeEvent.game)} — ${findFormat(activeEvent.formatId).label} — 📅 ${formatFrDate(activeEvent.scheduledDate)} — ${activeEvent.roundMinutes} min/manche</p>`;
+  html += `<p class="settings-note">${escapeHtml(activeEvent.game)} — ${findFormat(activeEvent.formatId).label} — ${bracketLabel} — ${activeEvent.roundMinutes} min/manche</p>`;
 
   const pending = eventParticipants.filter((p) => p.status === "liste_attente");
   const registered = eventParticipants.filter((p) => p.status === "inscrit");
@@ -604,7 +664,8 @@ function renderEventOrganizerPanel() {
         if (undefeatedCount() <= 1) {
           html += `<button class="btn btn-primary" type="button" id="ev-btn-finalize">🏆 Voir les résultats finaux</button>`;
         } else {
-          html += `<button class="btn btn-primary" type="button" id="ev-btn-next-round">Lancer le prochain regroupement</button>`;
+          const nextRoundLabel = activeEvent.bracketMode === "elimination" ? "Manche suivante (bracket)" : "Lancer le prochain regroupement";
+          html += `<button class="btn btn-primary" type="button" id="ev-btn-next-round">${nextRoundLabel}</button>`;
         }
       } else {
         html += `<p class="settings-note">En attente que tous les matchs de cette manche soient validés…</p>`;
@@ -650,7 +711,7 @@ function renderEventPlayerArea() {
   // laisser ses participants voir leur place finale — pour tout le monde
   // d'autre, c'est comme s'il n'y avait aucun événement en cours.
   if (!activeEvent || (activeEvent.status === "termine" && me?.status !== "inscrit")) {
-    el.innerHTML = `<p class="settings-note">Aucun événement n'est disponible pour le moment — regarde le calendrier ci-dessous pour voir ce qui est prévu.</p>`;
+    el.innerHTML = `<p class="settings-note">Aucun événement n'est disponible pour le moment.</p>`;
     return;
   }
 
@@ -663,7 +724,7 @@ function renderEventPlayerArea() {
   }
 
   if (!me || ["refuse", "exclu", "parti"].includes(me.status)) {
-    let msg = `Un événement <b>${escapeHtml(activeEvent.game)}</b> (${findFormat(activeEvent.formatId).label}) est disponible ! 📅 ${formatFrDate(activeEvent.scheduledDate)}`;
+    let msg = `Un événement <b>${escapeHtml(activeEvent.game)}</b> (${findFormat(activeEvent.formatId).label}) est disponible !`;
     if (me?.status === "refuse") msg = "Ta demande d'inscription a été refusée par l'organisateur.";
     if (me?.status === "exclu") msg = "Tu as été retiré de cet événement par l'organisateur.";
     if (me?.status === "parti") msg = "Tu as quitté cet événement.";
@@ -837,325 +898,6 @@ function wireEventMatchEvents(match) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Rendu — calendrier des événements à venir (tout le monde) — voir Task #28.
-// L'organisateur peut en plus supprimer un événement programmé qu'il n'a pas
-// encore démarré (jamais l'événement en cours ni un événement terminé).
-// ---------------------------------------------------------------------------
-function renderEventCalendarPanel() {
-  const el = $("#ev-calendar-panel");
-  if (!el) return;
-
-  const upcoming = upcomingEvents();
-  if (!upcoming.length) {
-    el.innerHTML = "";
-    el.style.display = "none";
-    return;
-  }
-  el.style.display = "";
-
-  let html = `<h3>📅 Calendrier — événements à venir</h3>`;
-  upcoming.forEach((e) => {
-    const deleteBtn = isOrganizer()
-      ? `<button class="btn-mini btn-mini-no" data-action="ev-delete" data-id="${e.id}">Supprimer</button>`
-      : "";
-    html += `
-      <div class="dd-row">
-        <div class="dd-row-name">📅 ${formatFrDate(e.scheduledDate)} — ${escapeHtml(e.game)} <span class="dd-pill">${findFormat(e.formatId).label}</span></div>
-        <div class="dd-row-actions">${deleteBtn}</div>
-      </div>`;
-  });
-  el.innerHTML = html;
-
-  el.querySelectorAll('[data-action="ev-delete"]').forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (!confirm("Supprimer cet événement programmé ?")) return;
-      withErrorToast(() => deleteEvent(btn.dataset.id));
-    });
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Écran Calendrier — calendrier mensuel "case classique" (grille de jours),
-// accessible à tout le monde depuis l'accueil. Montre TOUS les événements
-// pas encore terminés (y compris celui géré depuis l'écran Événement,
-// contrairement au petit rappel ci-dessus qui l'exclut volontairement) :
-// on peut cliquer sur un événement pour voir son détail, s'y inscrire à
-// l'avance ("Je participe" — même mécanisme d'inscription que l'écran
-// Événement, juste sur un eventId choisi plutôt que toujours l'actif, voir
-// requestJoinEventGeneric ci-dessus) et voir la liste des joueurs déjà
-// inscrits.
-// ---------------------------------------------------------------------------
-const CAL_WEEKDAY_LABELS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
-const CAL_MONTH_LABELS = [
-  "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
-  "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre",
-];
-
-function calendarDisplayedMonth() {
-  const base = new Date();
-  base.setDate(1);
-  base.setMonth(base.getMonth() + calendarMonthOffset);
-  return { year: base.getFullYear(), month: base.getMonth() }; // month: 0-11
-}
-
-function calendarDateStr(year, month, day) {
-  return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-}
-
-// Grille de 7×N cases (semaines commençant le lundi) : null = case vide
-// (avant le 1er du mois ou après le dernier jour), sinon le numéro du jour.
-function calendarBuildCells(year, month) {
-  const firstOfMonth = new Date(year, month, 1);
-  const jsWeekday = firstOfMonth.getDay(); // 0=dimanche..6=samedi
-  const leadingBlanks = (jsWeekday + 6) % 7; // -> 0=lundi..6=dimanche
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-  const cells = [];
-  for (let i = 0; i < leadingBlanks; i++) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-  while (cells.length % 7 !== 0) cells.push(null);
-  return cells;
-}
-
-// Tous les événements pas encore terminés, actif compris (voir le
-// commentaire au-dessus de cette section pour la différence avec
-// upcomingEvents()).
-function allCalendarEvents() {
-  return eventsAll.filter((e) => e.status !== "termine");
-}
-function calendarEventsOnDate(dateStr) {
-  return allCalendarEvents().filter((e) => e.scheduledDate === dateStr);
-}
-
-function calendarIsScreenActive() {
-  return !!$("#view-calendar")?.classList.contains("active");
-}
-
-async function fetchCalendarParticipants(eventId) {
-  calendarParticipantsLoading[eventId] = true;
-  try {
-    const snap = await getDocs(collection(db, "events", eventId, "participants"));
-    calendarParticipantsByEventId[eventId] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  } catch (err) {
-    console.error(err);
-  } finally {
-    delete calendarParticipantsLoading[eventId];
-  }
-  renderCalendarScreen();
-}
-
-// Chargement à la demande (pas d'écoute permanente, comme l'historique des
-// événements) des participants de chaque événement affiché dans le
-// calendrier — nécessaire pour afficher le nombre d'inscrits sur chaque
-// case sans attendre un clic. Ne relance jamais un fetch déjà en cours ni
-// déjà en cache pour un eventId donné.
-function ensureCalendarParticipantsLoaded() {
-  allCalendarEvents().forEach((e) => {
-    if (!(e.id in calendarParticipantsByEventId) && !calendarParticipantsLoading[e.id]) {
-      fetchCalendarParticipants(e.id);
-    }
-  });
-}
-
-function calendarMyParticipant(eventId) {
-  const uid = myUid();
-  return (calendarParticipantsByEventId[eventId] || []).find((p) => p.id === uid) || null;
-}
-
-async function requestJoinCalendarEvent(eventId, elementIds) {
-  await requestJoinEventGeneric(eventId, elementIds);
-  calendarJoinFormEventId = null;
-  calendarJoinSelectedElementIds = [];
-  showToast(isOrganizer() ? "Tu es inscrit." : "Demande d'inscription envoyée à l'organisateur.");
-  await fetchCalendarParticipants(eventId); // rafraîchit tout de suite le compteur/la liste
-}
-
-function renderCalendarGrid() {
-  const el = $("#calendar-grid");
-  if (!el) return;
-
-  const { year, month } = calendarDisplayedMonth();
-  const cells = calendarBuildCells(year, month);
-  const todayStr = localDateStr();
-
-  let html = `
-    <div class="cal-header">
-      <button class="btn-mini btn-mini-ghost" type="button" id="cal-btn-prev">←</button>
-      <div class="cal-month-label">${CAL_MONTH_LABELS[month]} ${year}</div>
-      <button class="btn-mini btn-mini-ghost" type="button" id="cal-btn-next">→</button>
-    </div>
-    <div class="cal-grid">
-      ${CAL_WEEKDAY_LABELS.map((w) => `<div class="cal-weekday">${w}</div>`).join("")}
-  `;
-
-  cells.forEach((day) => {
-    if (day == null) {
-      html += `<div class="cal-cell cal-cell-empty"></div>`;
-      return;
-    }
-    const dateStr = calendarDateStr(year, month, day);
-    const dayEvents = calendarEventsOnDate(dateStr);
-    html += `<div class="cal-cell${dateStr === todayStr ? " cal-cell-today" : ""}">
-      <div class="cal-cell-daynum">${day}</div>
-      ${dayEvents
-        .map(
-          (e) =>
-            `<button type="button" class="cal-chip${e.id === calendarExpandedEventId ? " cal-chip-selected" : ""}" data-action="cal-pick" data-id="${e.id}">${escapeHtml(e.game)}</button>`
-        )
-        .join("")}
-    </div>`;
-  });
-
-  html += `</div>`;
-  if (!allCalendarEvents().length) {
-    html += `<p class="settings-note">Aucun tournoi programmé pour l'instant — reviens plus tard !</p>`;
-  }
-  el.innerHTML = html;
-
-  $("#cal-btn-prev")?.addEventListener("click", () => {
-    calendarMonthOffset -= 1;
-    renderCalendarScreen();
-  });
-  $("#cal-btn-next")?.addEventListener("click", () => {
-    calendarMonthOffset += 1;
-    renderCalendarScreen();
-  });
-  el.querySelectorAll('[data-action="cal-pick"]').forEach((btn) => {
-    btn.addEventListener("click", () => {
-      calendarExpandedEventId = btn.dataset.id;
-      calendarJoinFormEventId = null;
-      renderCalendarScreen();
-      $("#calendar-detail")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  });
-}
-
-function renderCalendarDetail() {
-  const el = $("#calendar-detail");
-  if (!el) return;
-
-  const event = calendarExpandedEventId ? allCalendarEvents().find((e) => e.id === calendarExpandedEventId) : null;
-  if (!event) {
-    el.innerHTML = "";
-    el.style.display = "none";
-    return;
-  }
-  el.style.display = "";
-
-  const participants = calendarParticipantsByEventId[event.id] || [];
-  const registered = participants.filter((p) => p.status === "inscrit");
-  const me = calendarMyParticipant(event.id);
-  const isMineActive = me && ["liste_attente", "inscrit"].includes(me.status);
-  const isActiveEvent = activeEvent && activeEvent.id === event.id;
-
-  let html = `
-    <h3>📅 ${formatFrDate(event.scheduledDate)} — ${escapeHtml(event.game)}</h3>
-    <p class="settings-note">${findFormat(event.formatId).label} — ${event.roundMinutes} min/manche${
-    isActiveEvent ? ' <span class="dd-pill">Inscriptions en cours</span>' : ""
-  }</p>
-  `;
-
-  if (isMineActive) {
-    html += `<p class="settings-note">${
-      me.status === "inscrit" ? "✅ Tu es inscrit à ce tournoi." : "⏳ Ta demande d'inscription est en attente de validation par l'organisateur."
-    }</p>`;
-  } else if (event.status === "inscription") {
-    html += `<button class="btn btn-primary" type="button" id="cal-btn-join">🙋 Je participe</button>`;
-  }
-
-  html += `<button class="btn-mini btn-mini-ghost" type="button" id="cal-btn-toggle-participants">${registered.length} inscrit${registered.length > 1 ? "s" : ""}</button>`;
-
-  if (calendarShowParticipantsFor === event.id) {
-    html += `<div class="manage-grid-label">Joueurs inscrits</div>`;
-    if (!registered.length) {
-      html += `<p class="settings-note">Personne d'inscrit pour l'instant.</p>`;
-    } else {
-      registered.forEach((p) => {
-        html += `<div class="dd-row"><div class="dd-row-avatar" data-avatar="${p.id}"></div><div class="dd-row-name">${escapeHtml(p.pseudo)}</div></div>`;
-      });
-    }
-  }
-
-  const gameElements = getGameElements(event.game);
-  if (calendarJoinFormEventId === event.id && gameElements.length) {
-    html += `
-      <div id="cal-join-elements-wrap">${elementsPickerHtml(event.game, calendarJoinSelectedElementIds)}</div>
-      <button class="btn btn-primary" type="button" id="cal-btn-join-confirm">Confirmer l'inscription</button>
-      <button class="btn btn-ghost" type="button" id="cal-btn-join-cancel">Annuler</button>
-    `;
-  }
-
-  el.innerHTML = html;
-
-  if (calendarShowParticipantsFor === event.id) {
-    registered.forEach((p) => {
-      const holder = el.querySelector(`[data-avatar="${p.id}"]`);
-      if (holder) renderAvatar(holder, p, 34);
-    });
-  }
-
-  $("#cal-btn-toggle-participants")?.addEventListener("click", () => {
-    calendarShowParticipantsFor = calendarShowParticipantsFor === event.id ? null : event.id;
-    renderCalendarScreen();
-  });
-
-  $("#cal-btn-join")?.addEventListener("click", () => {
-    if (!gameElements.length) {
-      withErrorToast(() => requestJoinCalendarEvent(event.id, []));
-      return;
-    }
-    calendarJoinFormEventId = event.id;
-    calendarJoinSelectedElementIds = [];
-    renderCalendarScreen();
-  });
-
-  if (calendarJoinFormEventId === event.id && gameElements.length) {
-    wireElementsPicker($("#cal-join-elements-wrap"), calendarJoinSelectedElementIds);
-    $("#cal-btn-join-confirm")?.addEventListener("click", () => {
-      if (!calendarJoinSelectedElementIds.length) {
-        showToast("Choisis au moins un élément pour ton deck.", true);
-        return;
-      }
-      withErrorToast(() => requestJoinCalendarEvent(event.id, calendarJoinSelectedElementIds.slice()));
-    });
-    $("#cal-btn-join-cancel")?.addEventListener("click", () => {
-      calendarJoinFormEventId = null;
-      renderCalendarScreen();
-    });
-  }
-}
-
-function renderCalendarScreen() {
-  if (!calendarIsScreenActive()) return;
-  ensureCalendarParticipantsLoaded();
-  renderCalendarGrid();
-  renderCalendarDetail();
-}
-
-export function showCalendarScreen() {
-  hideAllViews();
-  $("#view-calendar")?.classList.add("active");
-  startListening();
-  calendarMonthOffset = 0;
-  renderCalendarScreen();
-}
-function closeCalendarScreen() {
-  hideAllViews();
-  $("#view-app")?.classList.add("active");
-  stopListening();
-  calendarExpandedEventId = null;
-  calendarJoinFormEventId = null;
-  calendarJoinSelectedElementIds = [];
-  calendarShowParticipantsFor = null;
-  // Les compteurs/listes d'inscrits sont chargés à la demande (pas de
-  // onSnapshot dédié, voir ensureCalendarParticipantsLoaded) : on vide le
-  // cache à la fermeture pour forcer un rechargement à jour à la prochaine
-  // ouverture, plutôt que de risquer d'afficher un nombre d'inscrits périmé
-  // (ex. des joueurs validés par l'organisateur depuis la dernière visite).
-  calendarParticipantsByEventId = {};
-  calendarParticipantsLoading = {};
-}
 
 // ---------------------------------------------------------------------------
 // Rendu global + navigation
@@ -1163,7 +905,6 @@ function closeCalendarScreen() {
 function render() {
   renderEventOrganizerPanel();
   renderEventPlayerArea();
-  renderEventCalendarPanel();
 }
 
 export function showEventScreen() {
@@ -1270,6 +1011,4 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#btn-close-event")?.addEventListener("click", closeEventScreen);
   $("#btn-open-event-history")?.addEventListener("click", () => withErrorToast(openEventHistory));
   $("#btn-close-event-history")?.addEventListener("click", closeEventHistoryScreen);
-  $("#btn-open-calendar")?.addEventListener("click", showCalendarScreen);
-  $("#btn-close-calendar")?.addEventListener("click", closeCalendarScreen);
 });

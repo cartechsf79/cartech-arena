@@ -1,6 +1,35 @@
-# Car'Tech Arena — v11
+# Car'Tech Arena — v12
 
-Cette version ajoute **3 fonctionnalités** :
+Cette version ajoute **2 grandes fonctionnalités** :
+
+- **Calendrier et Événement complètement indépendants** : le Calendrier
+  n'est plus du tout lié aux vrais Événements (tournois joués sur
+  place) — c'est maintenant une simple liste d'annonces "jeu + date"
+  sans aucune inscription ni validation : n'importe qui peut cliquer
+  **"🙋 Je suis intéressé(e)"** pour dire qu'il compte venir, librement
+  et sans que tu aies quoi que ce soit à valider. Un vrai Événement, de
+  son côté, se joue **maintenant** — il ne te demande plus de date à la
+  création.
+- **Tournoi par élimination directe** : en plus du tournoi à la suisse
+  existant, tu peux maintenant créer un Événement en **mode
+  élimination directe** (bracket classique, avec byes si le nombre de
+  joueurs n'est pas une puissance de 2). Un nouvel **arbre visuel du
+  tournoi** s'affiche sur l'écran d'affichage, avec la photo de profil
+  et la décoration de chaque joueur à côté de son pseudo, les joueurs
+  éliminés barrés, et le chronomètre de la manche en cours.
+
+Voir les sections "Nouveau dans cette version" plus bas pour le détail
+complet de chacune.
+
+**Republication des règles Firestore NÉCESSAIRE pour cette version**
+(nouvelle collection `calendarAnnouncements`) — voir "Mise à jour depuis
+une version précédente" plus bas.
+
+---
+
+## Historique — v11
+
+Cette version ajoutait **3 fonctionnalités** :
 
 - **Écran d'affichage repensé pour un vrai second écran** : tout le
   texte est agrandi et le **chronomètre de manche est bien plus gros**
@@ -10,14 +39,16 @@ Cette version ajoute **3 fonctionnalités** :
   et il n'y a volontairement **plus aucun bouton pour le fermer** :
   c'est un écran "juste les infos", en continu, que tu fermes toi-même
   en fermant l'onglet quand tu en as besoin.
-- **Calendrier des tournois** : un nouveau bouton **"📅 Calendrier"**,
-  visible par tout le monde depuis l'accueil, qui affiche tous les
-  tournois programmés dans une vraie **vue mensuelle** (case par jour,
-  comme un calendrier classique) — pas seulement le tournoi du moment.
-  En cliquant sur un tournoi, un joueur peut s'y **inscrire à l'avance**
-  ("🙋 Je participe") même si ce n'est pas encore le tournoi en cours,
-  et voir combien de joueurs sont déjà inscrits (bouton "[N] inscrits",
-  qui déplie la liste complète au clic).
+- **Calendrier des tournois** *(remplacé en v12 par un calendrier
+  totalement indépendant des Événements — voir plus haut)* : un nouveau
+  bouton **"📅 Calendrier"**, visible par tout le monde depuis
+  l'accueil, qui affichait tous les tournois programmés dans une vraie
+  **vue mensuelle** (case par jour, comme un calendrier classique) —
+  pas seulement le tournoi du moment. En cliquant sur un tournoi, un
+  joueur pouvait s'y **inscrire à l'avance** ("🙋 Je participe") même si
+  ce n'était pas encore le tournoi en cours, et voir combien de joueurs
+  étaient déjà inscrits (bouton "[N] inscrits", qui dépliait la liste
+  complète au clic).
 - **Points de saison depuis les Événements** : si une saison est en
   cours, les points gagnés pendant un Événement (tournoi) comptent
   maintenant dans le classement de la saison — **exactement les mêmes
@@ -29,10 +60,8 @@ Cette version ajoute **3 fonctionnalités** :
 Voir les 3 sections "Nouveau dans cette version" plus bas pour le détail
 complet de chacune.
 
-**Aucune republication des règles Firestore n'est nécessaire pour cette
-version** (uniquement des changements de code JS/HTML/CSS) — republie-les
-quand même par habitude si tu préfères (ça ne fait jamais de mal), mais ce
-n'est pas obligatoire cette fois-ci.
+**Aucune republication des règles Firestore n'était nécessaire pour la
+v11** (uniquement des changements de code JS/HTML/CSS).
 
 ---
 
@@ -318,10 +347,9 @@ d'avoir à activer un mode payant.
    changes"). `js/firebase-config.js` contient déjà tes vraies clés et ton
    email organisateur, pas besoin d'y retoucher.
 
-2. **Republie les règles Firestore** — **pas obligatoire pour la v11**
-   (aucune règle n'a changé cette fois-ci, uniquement du code
-   JS/HTML/CSS), mais garde de toute façon l'habitude de les republier à
-   chaque mise à jour, pour être sûr que tout reste synchronisé :
+2. **Republie les règles Firestore** — **obligatoire pour la v12**
+   (nouvelle collection `calendarAnnouncements` pour le Calendrier
+   maintenant indépendant des Événements, voir plus haut) :
    Firebase Console > Firestore Database > onglet "Règles"
    > sélectionne TOUT le contenu déjà présent et supprime-le d'abord >
    colle tout le contenu de `firestore.rules` (vérifie qu'il commence par
@@ -1237,6 +1265,12 @@ pas sur l'horloge de chacun).
 
 ## Nouveau dans cette version — écran Calendrier (inscription à l'avance)
 
+> ⚠️ **Remplacé en v12** — voir plus bas "Nouveau dans cette version —
+> Calendrier totalement indépendant de l'Événement". Depuis la v12, le
+> Calendrier n'est plus du tout lié aux vrais Événements ni à leurs
+> inscriptions : cette section ci-dessous décrit son ancien
+> fonctionnement (v9 à v11), gardée ici pour l'historique.
+
 Un nouveau bouton **"📅 Calendrier"**, visible depuis l'accueil par tout
 le monde (organisateur comme joueurs) — à ne pas confondre avec le petit
 calendrier "événements à venir" en bas de l'écran Événement (toujours là,
@@ -1293,6 +1327,81 @@ tout comme les "points cumulés" de départage en cas d'égalité dans le
 classement de saison (propres aux duels, sans équivalent naturel pour un
 match de tournoi).
 
+## Nouveau dans cette version — Calendrier totalement indépendant de l'Événement
+
+Le bouton **"📅 Calendrier"** (visible par tout le monde depuis
+l'accueil) fonctionne maintenant complètement à part du système
+d'Événement (tournois joués sur place) — **aucune synchronisation entre
+les deux** :
+
+- Une "annonce" du calendrier n'est plus qu'une simple date + un jeu,
+  créée par toi (organisateur) depuis le nouveau petit formulaire en
+  haut de l'écran Calendrier — ce n'est plus un vrai Événement
+  programmé à l'avance (l'Événement, lui, se joue maintenant
+  **toujours "aujourd'hui"**, voir la section suivante).
+- **Aucune inscription, aucune validation** : n'importe quel compte
+  connecté peut cliquer **"🙋 Je suis intéressé(e)"** pour dire qu'il
+  pense venir (et re-cliquer pour se retirer) — ça ne fait qu'ajouter
+  ou retirer son propre nom d'une liste, tu n'as rien à valider. Le
+  bouton "[N] intéressé(e)s" déplie la liste des joueurs concernés.
+- Tu peux supprimer une annonce à tout moment depuis le panneau
+  organisateur de l'écran Calendrier.
+
+En clair : le Calendrier sert maintenant uniquement à **annoncer une
+date à l'avance** ("le prochain tournoi Pokémon, c'est samedi") pour
+que les joueurs sachent s'organiser, sans aucune mécanique
+d'inscription — l'inscription elle-même se fait toujours normalement
+depuis l'écran Événement, le jour même.
+
+## Nouveau dans cette version — un Événement se joue "maintenant"
+
+Conséquence directe du découplage ci-dessus : créer un Événement ne
+demande plus de choisir une date — le formulaire "Démarrer un
+événement" ne propose plus que le jeu, le format et (nouveau, voir
+juste en dessous) le type de tournoi. L'Événement créé est daté du jour
+même automatiquement, en coulisses, uniquement pour que les points de
+saison continuent de se rattacher à la bonne journée (voir "points de
+saison depuis les Événements" plus haut) — cette date n'est plus
+affichée nulle part.
+
+## Nouveau dans cette version — tournoi par élimination directe
+
+Le formulaire de création d'un Événement propose maintenant un choix
+**"Type de tournoi"** :
+
+- **Tournoi à la suisse** (comme avant, par défaut) : tout le monde
+  joue à chaque manche, appariements par groupes de victoires.
+- **Tournoi par élimination** (nouveau) : un bracket classique — une
+  défaite élimine le joueur. Si le nombre d'inscrits n'est pas une
+  puissance de 2 (4, 8, 16…), certains joueurs reçoivent un **bye**
+  (victoire automatique) à la première manche pour que le bracket
+  tombe juste ; ça ne peut plus arriver aux manches suivantes. Le
+  bouton "Lancer/manche suivante" s'appelle "Manche suivante (bracket)"
+  dans ce mode pour que ce soit clair, mais fonctionne pareil — même
+  chronomètre par manche, mêmes doubles-validations de résultat que le
+  tournoi à la suisse.
+
+## Nouveau dans cette version — arbre visuel du bracket (écran d'affichage)
+
+Quand un Événement est en mode **élimination**, l'écran d'affichage
+(le second écran/la télé en boutique) montre en plus un **arbre visuel
+du tournoi**, manche par manche, avec :
+
+- la **photo de profil et la décoration active** de chaque joueur à
+  côté de son pseudo (même rendu que partout ailleurs dans l'appli) ;
+- les joueurs **éliminés affichés barrés**, pour repérer d'un coup
+  d'œil qui est encore en course ;
+- le **chronomètre de la manche en cours**, affiché aussi juste
+  au-dessus de l'arbre (le même compte à rebours que celui affiché à
+  côté des appariements) ;
+- un **trophée** qui apparaît à côté du nom du vainqueur une fois la
+  finale jouée et l'événement terminé.
+
+Ce tournoi à la suisse continue, lui, de n'afficher que le placement
+provisoire (comme avant) — l'arbre est spécifique au mode élimination,
+puisque c'est là que la structure "qui affronte qui à la prochaine
+manche" prend tout son sens visuellement.
+
 ## Ce qui n'est pas encore fait (prochaine étape)
 
 - Un classement général "toutes saisons confondues" (le système de saisons
@@ -1318,10 +1427,12 @@ match de tournoi).
   du Duel du jour (pas encore sur les inscriptions/matchs d'Événement).
 - Le seuil de "joueur régulier" du tableau de bord (3 jours différents
   sur 30) n'est pas encore réglable depuis l'appli.
-- Le **calendrier** (écran Calendrier comme le petit rappel dans l'écran
-  Événement) ne gère pas les événements récurrents (un événement chaque
-  semaine par ex.) — chaque date se programme encore une par une.
-- Depuis le **Calendrier**, valider une inscription en attente n'est
-  possible que pour le tournoi actuellement géré (voir la limite notée
-  plus haut) — pas encore un moyen de valider à l'avance les inscriptions
-  d'un tournoi plus lointain directement depuis cet écran.
+- Le **Calendrier** ne gère pas les annonces récurrentes (un tournoi
+  chaque semaine par ex.) — chaque date s'ajoute encore une par une.
+- En mode **élimination**, pas de match de "3e place" ni de vrai
+  système de repêchage — une défaite élimine directement, sans autre
+  forme de classement fin que l'ordre victoires/défaites habituel pour
+  les non-finalistes.
+- L'arbre visuel du bracket (écran d'affichage) n'affiche que les
+  manches déjà appariées — pas encore de "cases vides" en pointillés
+  pour visualiser à l'avance la structure des manches futures.

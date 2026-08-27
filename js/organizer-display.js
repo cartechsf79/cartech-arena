@@ -21,7 +21,7 @@
 import { doc, getDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 import { db } from "./firebase-init.js";
-import { $, getCurrentProfile, hideAllViews } from "./app.js";
+import { $, getCurrentProfile, hideAllViews, renderAvatar } from "./app.js";
 import { findFormat } from "./catalog.js";
 import { getGameElements, elementIconsHtml } from "./live-catalog.js";
 import { WIN_POINTS, LOSS_POINTS, MAX_POINTS_PER_DAY, localDateStr, toDate } from "./season.js";
@@ -73,7 +73,8 @@ function formatCountdown(roundStartAt, roundMinutes) {
 // (son panneau organisateur a besoin de "le prochain programmé" pour la
 // gestion des inscriptions, ce qui n'a pas de sens ici). On ne montre donc
 // jamais un événement pas encore commencé ("inscription") : c'est le rôle du
-// calendrier désormais (voir showCalendarScreen dans event.js). En cours
+// calendrier désormais, totalement indépendant (voir showCalendarScreen dans
+// calendar.js — Task #44). En cours
 // d'abord, sinon le dernier terminé (pour laisser voir le score final juste
 // après) — jamais le prochain programmé, sinon un tournoi déjà planifié à
 // l'avance masquerait le score final du tournoi qui vient de se terminer,
@@ -164,10 +165,14 @@ function stopListening() {
 function startCountdownTicker() {
   if (countdownInterval) return;
   countdownInterval = setInterval(() => {
+    if (!activeEvent?.roundStartAt) return;
+    const text = formatCountdown(activeEvent.roundStartAt, activeEvent.roundMinutes);
     const el = document.getElementById("orgdisp-countdown");
-    if (el && activeEvent?.roundStartAt) {
-      el.textContent = formatCountdown(activeEvent.roundStartAt, activeEvent.roundMinutes);
-    }
+    if (el) el.textContent = text;
+    // Même chronomètre, affiché une 2e fois au-dessus de l'arbre du bracket
+    // en mode élimination (voir renderEventBracketSection) — Task #45/#46.
+    const bracketEl = document.getElementById("orgdisp-bracket-countdown");
+    if (bracketEl) bracketEl.textContent = text;
   }, 1000);
 }
 function stopCountdownTicker() {
@@ -202,6 +207,108 @@ function renderEventLiveSection() {
   });
 
   el.innerHTML = html;
+}
+
+// ---------------------------------------------------------------------------
+// Rendu — Arbre visuel du bracket (Task #46, uniquement en mode élimination)
+// En plus de la section ci-dessus (chronomètre + appariements), affiche
+// l'arbre complet du tournoi : une colonne par manche déjà appariée, les
+// vainqueurs regroupés visuellement par paire (bracket-pair) pour dessiner
+// les traits de connexion en CSS pur (voir style.css, .bracket-*), avatar +
+// décoration active à côté de chaque pseudo (comme partout ailleurs dans
+// l'appli, voir renderAvatar), et les joueurs éliminés (au moins une
+// défaite) barrés pour qu'on les repère d'un coup d'œil sur grand écran.
+// ---------------------------------------------------------------------------
+function participantByUid(uid) {
+  return eventParticipants.find((p) => p.id === uid) || null;
+}
+
+function bracketRoundsData() {
+  const totalRounds = activeEvent.bracketTotalRounds || 0;
+  const rounds = [];
+  for (let r = 1; r <= totalRounds; r++) {
+    const matches = eventMatches.filter((m) => m.round === r).sort((a, b) => (a.slotIndex ?? 0) - (b.slotIndex ?? 0));
+    if (!matches.length) break; // manche pas encore appariée : on s'arrête là
+    rounds.push(matches);
+  }
+  return { rounds, totalRounds };
+}
+
+function bracketPlayerHtml(uid, pseudoFallback) {
+  if (!uid) return `<span class="bracket-tbd">—</span>`;
+  const p = participantByUid(uid);
+  const eliminated = p ? computeRecord(uid).losses > 0 : false;
+  const pseudo = p ? p.pseudo : pseudoFallback || "?";
+  return `
+    <span class="bracket-player${eliminated ? " bracket-eliminated" : ""}">
+      <span class="bracket-avatar" data-bracket-avatar="${uid}"></span>
+      <span class="bracket-pseudo">${escapeHtml(pseudo)}</span>
+    </span>`;
+}
+
+function bracketMatchHtml(m) {
+  const p1 = bracketPlayerHtml(m.player1Uid, m.player1Pseudo);
+  const p2 = m.isBye ? `<span class="bracket-tbd">🎁 bye</span>` : bracketPlayerHtml(m.player2Uid, m.player2Pseudo);
+  return `<div class="bracket-match">${p1}${p2}</div>`;
+}
+
+// Chaque manche (sauf la dernière) regroupe ses matchs 2 par 2 dans un
+// wrapper .bracket-pair : c'est ce qui permet à style.css de dessiner le
+// trait qui relie les 2 vainqueurs vers la case de la manche suivante, sans
+// aucun calcul de position en JS (voir le commentaire CSS correspondant).
+function bracketRoundHtml(matches) {
+  if (matches.length <= 1) {
+    return `<div class="bracket-round">${matches.map(bracketMatchHtml).join("")}</div>`;
+  }
+  let html = `<div class="bracket-round">`;
+  for (let i = 0; i < matches.length; i += 2) {
+    html += `<div class="bracket-pair">${bracketMatchHtml(matches[i])}${matches[i + 1] ? bracketMatchHtml(matches[i + 1]) : ""}</div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+function renderEventBracketSection() {
+  const el = $("#orgdisp-event-bracket");
+  if (!el) return;
+  if (!activeEvent || activeEvent.bracketMode !== "elimination" || !["en_cours", "termine"].includes(activeEvent.status)) {
+    el.innerHTML = "";
+    el.style.display = "none";
+    return;
+  }
+
+  const { rounds, totalRounds } = bracketRoundsData();
+  if (!rounds.length) {
+    el.innerHTML = "";
+    el.style.display = "none";
+    return;
+  }
+  el.style.display = "";
+
+  let html = `<h3>🏹 Arbre du tournoi — ${escapeHtml(activeEvent.game)}</h3>`;
+  if (activeEvent.status === "en_cours" && activeEvent.roundStartAt) {
+    html += `<p id="orgdisp-bracket-countdown" class="dd-pill">${formatCountdown(activeEvent.roundStartAt, activeEvent.roundMinutes)}</p>`;
+  }
+
+  html += `<div class="bracket-tree">`;
+  rounds.forEach((matches) => (html += bracketRoundHtml(matches)));
+
+  // Trophée : uniquement une fois la manche finale (celle qui ramène à 1
+  // seul match) jouée et son résultat validé.
+  const lastRoundMatches = rounds[rounds.length - 1];
+  if (rounds.length === totalRounds && lastRoundMatches.length === 1 && lastRoundMatches[0].status === "termine") {
+    const winnerUid = matchWinnerUid(lastRoundMatches[0]);
+    html += `<div class="bracket-round bracket-round-winner"><div class="bracket-match bracket-winner-box">🏆 ${bracketPlayerHtml(winnerUid)}</div></div>`;
+  }
+  html += `</div>`;
+
+  el.innerHTML = html;
+
+  el.querySelectorAll("[data-bracket-avatar]").forEach((holder) => {
+    const uid = holder.dataset.bracketAvatar;
+    const p = participantByUid(uid);
+    if (p) renderAvatar(holder, p, 28);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -288,6 +395,7 @@ function renderTodayLeaderboardSection() {
 // ---------------------------------------------------------------------------
 function render() {
   renderEventLiveSection();
+  renderEventBracketSection();
   renderEventFinalSection();
   renderTodayLeaderboardSection();
   const nothing = $("#orgdisp-nothing");

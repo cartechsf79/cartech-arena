@@ -434,7 +434,6 @@
 
       <div class="card settings-section" id="ev-organizer-panel" style="display:none;"></div>
       <div class="card settings-section" id="ev-player-area"></div>
-      <div class="card settings-section" id="ev-calendar-panel"></div>
     </div>
   </div>
 
@@ -470,8 +469,10 @@
   </div>
 
   <!-- ============================================================ -->
-  <!-- ÉCRAN : Calendrier — vue mensuelle de tous les tournois pas    -->
-  <!-- encore terminés, ouverte à tout le monde depuis l'accueil.     -->
+  <!-- ÉCRAN : Calendrier — annonces "date + jeu" totalement          -->
+  <!-- indépendantes des vrais Événements (voir Task #44/js/calendar.js), -->
+  <!-- ouvertes à tout le monde depuis l'accueil. Aucune validation :  -->
+  <!-- n'importe qui peut dire "je suis intéressé(e)".                -->
   <!-- ============================================================ -->
   <div class="view" id="view-calendar">
     <div class="app-wrap settings-wrap">
@@ -480,6 +481,7 @@
         <h1 class="settings-title">📅 Calendrier</h1>
       </div>
 
+      <div class="card settings-section" id="cal-organizer-panel" style="display:none;"></div>
       <div class="card settings-section" id="calendar-grid"></div>
       <div class="card settings-section" id="calendar-detail" style="display:none;"></div>
     </div>
@@ -500,6 +502,7 @@
 
       <p class="settings-note" id="orgdisp-nothing" style="display:none;">Rien à afficher pour l'instant — reviens quand un événement sera en cours/terminé, ou que des duels du jour auront été joués aujourd'hui.</p>
       <div class="card settings-section" id="orgdisp-event-live" style="display:none;"></div>
+      <div class="card settings-section" id="orgdisp-event-bracket" style="display:none;"></div>
       <div class="card settings-section" id="orgdisp-event-final" style="display:none;"></div>
       <div class="card settings-section" id="orgdisp-today-leaderboard" style="display:none;"></div>
     </div>
@@ -600,6 +603,7 @@
   <script type="module" src="js/settings.js"></script>
   <script type="module" src="js/daily-duel.js"></script>
   <script type="module" src="js/event.js"></script>
+  <script type="module" src="js/calendar.js"></script>
   <script type="module" src="js/season.js"></script>
   <script type="module" src="js/dashboard.js"></script>
   <script type="module" src="js/spectator.js"></script>

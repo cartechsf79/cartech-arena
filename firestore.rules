@@ -131,6 +131,31 @@ service cloud.firestore {
     }
 
     // --------------------------------------------------------------------
+    // Calendrier des tournois (Task #44) : de simples annonces "date + jeu"
+    // totalement indépendantes des vrais événements (voir events/{eventId}
+    // plus bas) — aucune validation par l'organisateur nécessaire ici,
+    // n'importe quel compte connecté peut juste dire "je suis intéressé"
+    // en ajoutant SON PROPRE uid au tableau "interested", ou le retirer.
+    // hasAll()/in (plutôt qu'une égalité stricte sur le tableau) pour rester
+    // correct quel que soit l'ordre interne du tableau après un
+    // arrayUnion/arrayRemove côté client.
+    // --------------------------------------------------------------------
+    function onlyToggledOwnInterest(uid) {
+      let oldInterested = resource.data.get('interested', []);
+      let newInterested = request.resource.data.get('interested', []);
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['interested'])
+        && (
+          (newInterested.size() == oldInterested.size() + 1
+            && newInterested.hasAll(oldInterested)
+            && (uid in newInterested) && !(uid in oldInterested))
+          ||
+          (oldInterested.size() == newInterested.size() + 1
+            && oldInterested.hasAll(newInterested)
+            && (uid in oldInterested) && !(uid in newInterested))
+        );
+    }
+
+    // --------------------------------------------------------------------
     // Fonctions utilitaires pour les matchs d'Événement : un match se joue
     // en plusieurs manches (1/3/5 selon bo1/bo3/bo5), chaque joueur envoie
     // TOUT son tableau de résultats en un seul coup (jamais rempli à
@@ -647,6 +672,28 @@ service cloud.firestore {
                ? 'termine'
                : (resource.data.gamesResult1 == null ? 'en_cours' : 'litige')
            )
+      );
+
+      allow delete: if isOrganizer();
+    }
+
+    // ========================================================================
+    // Calendrier des tournois — annonces "date + jeu" totalement indépendantes
+    // des vrais événements ci-dessus (Task #44) : pas de sous-collection, pas
+    // de validation, juste un tableau "interested" (uids) que n'importe quel
+    // compte connecté peut faire grossir/rétrécir d'une seule unité — la
+    // sienne (voir onlyToggledOwnInterest plus haut).
+    // ========================================================================
+    match /calendarAnnouncements/{annId} {
+      allow read: if request.auth != null;
+
+      allow create: if isOrganizer()
+        && request.resource.data.game is string
+        && request.resource.data.date is string
+        && request.resource.data.interested == [];
+
+      allow update: if isOrganizer() || (
+        request.auth != null && onlyToggledOwnInterest(request.auth.uid)
       );
 
       allow delete: if isOrganizer();

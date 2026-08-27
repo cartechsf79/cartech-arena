@@ -455,3 +455,51 @@ body[data-theme="trophee-bronze"] {
   .cal-cell { min-height: 50px; }
   .cal-chip { font-size: 9px; padding: 2px 4px; }
 }
+
+/* ---- Arbre visuel du bracket (tournoi par élimination — Task #46) ----
+   Une colonne par manche. Chaque manche (sauf la dernière) regroupe ses 2
+   matchs par paire dans un .bracket-pair : c'est ce wrapper qui porte le
+   trait vertical (::after) reliant les 2 vainqueurs, chaque .bracket-match
+   portant lui-même le petit trait horizontal (::before) qui part vers ce
+   trait vertical — aucun calcul de position en JS, juste des colonnes flex
+   de même hauteur avec justify-content: space-around (l'espacement double
+   naturellement à chaque manche, comme sur un vrai bracket). */
+.bracket-tree {
+  display: flex; align-items: stretch; gap: 26px; overflow-x: auto;
+  padding: 10px 6px 6px; min-height: 160px;
+}
+.bracket-round {
+  display: flex; flex-direction: column; justify-content: space-around;
+  gap: 10px; min-width: 150px; flex: 1 0 auto;
+}
+.bracket-pair {
+  display: flex; flex-direction: column; justify-content: space-around;
+  gap: 8px; position: relative; flex: 1;
+}
+.bracket-pair::after {
+  content: ""; position: absolute; right: -13px; top: 25%; bottom: 25%;
+  width: 1px; background: var(--panel-border);
+}
+.bracket-match {
+  position: relative; background: var(--bg2); border: 1px solid var(--panel-border);
+  border-radius: 10px; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px;
+}
+.bracket-round:not(:last-child) .bracket-match::before {
+  content: ""; position: absolute; right: -13px; top: 50%; width: 13px; height: 1px;
+  background: var(--panel-border);
+}
+.bracket-player { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; }
+.bracket-avatar { width: 22px; height: 22px; border-radius: 50%; overflow: hidden; flex: none; }
+.bracket-pseudo { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bracket-eliminated .bracket-pseudo { text-decoration: line-through; color: var(--muted); }
+.bracket-tbd { font-size: 11px; color: var(--muted); font-style: italic; padding-left: 28px; }
+.bracket-round-winner { justify-content: center; min-width: 130px; }
+.bracket-winner-box {
+  background: var(--accent-grad); border: none; color: #fff; align-items: center;
+  text-align: center; font-weight: 800;
+}
+.bracket-winner-box .bracket-pseudo { color: #fff; }
+@media (max-width: 700px) {
+  .bracket-round { min-width: 118px; }
+  .bracket-player { font-size: 11px; }
+}
