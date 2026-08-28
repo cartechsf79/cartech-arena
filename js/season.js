@@ -474,6 +474,39 @@ export async function fetchCareerStats(uid) {
   return computeCareerStats(duels, seasonsList, uid, adjustmentsList, eventMatchesList);
 }
 
+// Place au classement de la saison en cours pour UN joueur précis (même
+// calcul que renderSeasonPlayerArea, mais utilisable sans avoir l'écran
+// Saison ouvert — voir la "carte de joueur" dans settings.js). Retourne
+// null si aucune saison n'est en cours, ou si ce joueur n'apparaît pas dans
+// le classement (ne devrait jamais arriver : buildLeaderboardRows inclut
+// tous les comptes existants, même à 0 point).
+export async function fetchMySeasonRank(uid) {
+  const [duelsSnap, seasonsSnap, adjustmentsSnap, eventsSnap, usersSnap] = await Promise.all([
+    getDocs(duelsCol),
+    getDocs(seasonsCol),
+    getDocs(pointAdjustmentsCol),
+    getDocs(eventsCol),
+    getDocs(collection(db, "users")),
+  ]);
+  const duels = duelsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const seasonsList = seasonsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const adjustmentsList = adjustmentsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const usersAll = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const active = getActiveSeason(seasonsList);
+  if (!active) return null;
+  // Fan-out à la demande (même raison que fetchCareerStats ci-dessus).
+  const matchesSnaps = await Promise.all(
+    eventsSnap.docs.map((e) => getDocs(collection(db, "events", e.id, "matches")))
+  );
+  const eventMatchesList = matchesSnaps.flatMap((s) => s.docs.map((d) => ({ id: d.id, ...d.data() })));
+  const gameWinConditions = buildGameWinConditionsMap();
+  const standings = computeSeasonStandings(duels, active, gameWinConditions, adjustmentsList, eventMatchesList);
+  const rows = buildLeaderboardRows(usersAll, standings);
+  const myIndex = rows.findIndex((r) => r.id === uid);
+  if (myIndex < 0) return null;
+  return { rank: myIndex + 1, total: rows.length, points: rows[myIndex].points, seasonNumber: active.seasonNumber };
+}
+
 // Historique des ajustements manuels d'UN joueur précis, du plus récent au
 // plus ancien — utilisé par le panneau organisateur "Gérer ce joueur"
 // (settings.js) pour afficher/permettre de supprimer les bonus déjà

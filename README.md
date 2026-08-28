@@ -1,12 +1,53 @@
-# Car'Tech Arena — v15
+# Car'Tech Arena — v16
 
-Cette version ajoute 4 améliorations demandées :
+Cette version ajoute 3 améliorations demandées, toutes tournées vers
+l'accueil des nouveaux joueurs :
 
-- **Toi (organisateur) voit maintenant tous les titres de succès** :
-  dans ton propre sélecteur de titre (Réglages), tu vois désormais
-  **tous** les titres de succès existants, même ceux que tu n'as
-  jamais débloqués toi-même — pratique pour les essayer/les afficher
-  sans avoir à te les attribuer artificiellement. Ça ne change rien
+- **Visite guidée automatique pour les nouveaux arrivants** : dès sa
+  toute première connexion, un nouveau compte voit maintenant une
+  **petite visite guidée** (5 étapes avec une bulle qui pointe vers
+  chaque bouton : Duel du jour, Événement, Calendrier, Saison actuelle,
+  Réglages) qui explique en deux phrases ce que fait chaque écran —
+  "Passer" à tout moment, ou "Suivant" jusqu'à "Terminer". Un nouveau
+  bouton **"❓ Aide"** en haut des Réglages permet de la **revoir à
+  volonté**, pour toi comme pour n'importe quel joueur qui voudrait se
+  rafraîchir la mémoire. Mémorisée par appareil (pas besoin de la
+  revoir à chaque connexion une fois vue), sans rien ajouter au profil
+  Firestore du joueur.
+- **QR code personnel de parrainage** : dans Réglages, une nouvelle
+  section **"📱 Mon QR code de parrainage"** affiche un QR code propre
+  à chaque compte (avec aussi un bouton "Copier le lien"). Le scanner
+  (ou cliquer sur le lien) ouvre directement l'écran d'inscription avec
+  le parrainage **déjà réglé automatiquement** — plus besoin de
+  rechercher le pseudo du parrain à la main dans la modale habituelle.
+  Ça reprend exactement le même système de récompense de parrainage
+  qu'avant (voir "Historique — v10" plus bas) : un lien de parrainage
+  invalide ou périmé n'empêche jamais l'inscription, il est simplement
+  ignoré sans rien casser.
+- **Carte de joueur à partager** : toujours dans Réglages, une nouvelle
+  section **"🪪 Ma carte de joueur"** génère une image (pseudo, titre
+  actif, avatar et décoration, classement de la saison en cours) que le
+  joueur peut télécharger et partager où il veut (réseaux sociaux,
+  messagerie...) — un bouton "Générer ma carte" puis "Télécharger".
+
+**Aucune republication des règles Firestore n'est nécessaire pour la
+v16** : les 3 nouveautés ci-dessus réutilisent des mécanismes déjà en
+place (le parrainage automatique via QR écrit exactement comme la
+modale manuelle existante, la carte de joueur est une simple image
+générée dans le navigateur, et la visite guidée ne touche qu'au
+stockage local de l'appareil, jamais à Firestore).
+
+---
+
+## Historique — v15
+
+Cette version ajoutait 4 améliorations demandées :
+
+- **Toi (organisateur) voyais désormais tous les titres de succès** :
+  dans ton propre sélecteur de titre (Réglages), tu voyais **tous**
+  les titres de succès existants, même ceux que tu n'avais jamais
+  débloqués toi-même — pratique pour les essayer/les afficher sans
+  avoir à te les attribuer artificiellement. Ça ne changeait rien
   pour les joueurs normaux : eux continuent de ne voir que les titres
   qu'ils ont réellement gagnés.
 - **Calendrier — bouton "intéressé(e)" retiré le jour J** : une fois
@@ -15,12 +56,12 @@ Cette version ajoute 4 améliorations demandées :
   s'inscrire une fois qu'on est sur la case de l'événement. La liste
   des joueurs déjà intéressés reste visible et consultable normalement.
 - **Nouveau titre exclusif "Organisateur"** : un titre spécial nommé
-  **"Organisateur"** est maintenant disponible uniquement dans ton
-  propre sélecteur de titre (Réglages) — toi seul peux te l'attribuer,
-  il n'apparaît jamais dans le catalogue de titres à publier, ni dans
+  **"Organisateur"** est disponible uniquement dans ton propre
+  sélecteur de titre (Réglages) — toi seul peux te l'attribuer, il
+  n'apparaît jamais dans le catalogue de titres à publier, ni dans
   la liste des titres que tu peux donner à un autre joueur.
 - **Logo de l'application personnalisable** : une nouvelle section
-  **"⚔️ Logo de l'application"** dans l'Espace organisateur (🛡️) te
+  **"⚔️ Logo de l'application"** dans l'Espace organisateur (🛡️)
   permet d'importer ta propre image pour remplacer l'épée ⚔️ par
   défaut — avec gabarit téléchargeable, comme d'habitude. **Le logo se
   met à jour automatiquement chez tout le monde**, y compris chez les
@@ -28,16 +69,12 @@ Cette version ajoute 4 améliorations demandées :
   reconnecter). Deux limites techniques à connaître, voir le détail
   juste en dessous.
 
-**⚠️ Cette version nécessite de republier les règles Firestore** —
-contrairement à la v14, le nouveau logo personnalisable ajoute un tout
-petit nouvel espace de stockage (`appSettings`) au règlement de
-sécurité, donc **il faut republier `firestore.rules`** (Firebase
-Console → Firestore Database → Règles → copier-coller le contenu du
-fichier `firestore.rules` fourni → Publier) avant que le bouton
-"Appliquer ce logo" fonctionne. Les 3 autres changements ci-dessus,
-eux, ne demandent rien de plus sur Firebase.
+Cette version avait nécessité de republier les règles Firestore — le
+logo personnalisable ajoutait un petit nouvel espace de stockage
+(`appSettings`) au règlement de sécurité. Les 3 autres changements de
+la v15, eux, ne demandaient rien de plus sur Firebase.
 
-**Les 2 limites techniques du nouveau logo :**
+**Les 2 limites techniques du logo (v15) :**
 
 - **L'écran de connexion (avant de se connecter) garde toujours
   l'épée ⚔️ par défaut.** Ce n'est pas un oubli : toute lecture dans

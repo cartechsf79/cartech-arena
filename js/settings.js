@@ -27,9 +27,10 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 import { auth, db, ORGANIZER_EMAIL } from "./firebase-init.js";
-import { $, showToast, friendlyError, getCurrentProfile, getCurrentUid, renderAvatar, renderProfile, showSettingsScreen, applyProfileBackground, winsLossesHtml, titleBadgeHtml } from "./app.js";
+import { $, showToast, friendlyError, getCurrentProfile, getCurrentUid, renderAvatar, renderProfile, showSettingsScreen, showAppScreen, applyProfileBackground, winsLossesHtml, titleBadgeHtml } from "./app.js";
 import {
   getAllDecorations,
+  findAnyDecoration,
   getAllThemes,
   getAllTags,
   getAllProfileBgs,
@@ -88,7 +89,8 @@ import {
   downloadProfileBgTemplate,
   downloadGameElementTemplate,
 } from "./live-catalog.js";
-import { fetchCareerStats, fetchHeadToHead, fetchAdjustmentsForUid, addPointAdjustment, deletePointAdjustment } from "./season.js";
+import { fetchCareerStats, fetchHeadToHead, fetchAdjustmentsForUid, addPointAdjustment, deletePointAdjustment, fetchMySeasonRank } from "./season.js";
+import { showTutorial } from "./tutorial.js";
 
 const MAX_PHOTO_BYTES = 700_000; // marge de sécurité sous la limite de 1 Mo par document Firestore
 const CROP_VIEWPORT = 260; // doit correspondre à la taille CSS de .cropper-viewport
@@ -132,6 +134,8 @@ function populateSettingsScreen() {
   renderThemesGrid(profile);
   renderTagsGrid(profile);
   renderReferralInfo(profile);
+  renderMyReferralQr();
+  resetPlayerCardPreview();
 
   $("#search-player-result").innerHTML = "";
   $("#search-player-input").value = "";
@@ -166,6 +170,262 @@ async function renderReferralInfo(profile) {
   } catch (err) {
     countEl.textContent = "Impossible de charger le nombre de filleuls pour l'instant.";
   }
+}
+
+function downloadDataUrl(dataUrl, filename) {
+  const a = document.createElement("a");
+  a.href = dataUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+// ---------------------------------------------------------------------------
+// QR code personnel de parrainage (voir js/vendor/qrcode-min.js et
+// applyReferralFromUrl dans app.js) — encode l'URL de l'appli avec
+// "?ref=<mon uid>", capturée par n'importe quel autre compte qui
+// s'inscrirait après l'avoir scanné.
+// ---------------------------------------------------------------------------
+function myReferralUrl() {
+  return location.origin + location.pathname + "?ref=" + getCurrentUid();
+}
+
+function renderMyReferralQr() {
+  const canvas = $("#my-qr-canvas");
+  if (!canvas || !window.MiniQR) return;
+  try {
+    const { size, modules } = window.MiniQR.encode(myReferralUrl());
+    const moduleSize = 6;
+    const quiet = 4;
+    const px = (size + quiet * 2) * moduleSize;
+    canvas.width = px;
+    canvas.height = px;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, px, px);
+    ctx.fillStyle = "#000";
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        if (modules[r][c]) ctx.fillRect((c + quiet) * moduleSize, (r + quiet) * moduleSize, moduleSize, moduleSize);
+      }
+    }
+  } catch (err) {
+    // Texte trop long pour le générateur (ne devrait jamais arriver pour un
+    // lien de l'appli) : le canvas reste simplement vide.
+  }
+}
+
+function handleDownloadMyQr() {
+  const canvas = $("#my-qr-canvas");
+  if (!canvas || !canvas.width) return;
+  downloadDataUrl(canvas.toDataURL("image/png"), "mon-qr-parrainage.png");
+}
+
+async function handleCopyMyQrLink() {
+  try {
+    await navigator.clipboard.writeText(myReferralUrl());
+    showToast("Lien copié !");
+  } catch (err) {
+    showToast("Impossible de copier automatiquement — le lien est encodé dans le QR téléchargé.", true);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Carte de joueur à partager — image générée en canvas (pseudo, titre actif,
+// décoration, place au classement de la saison en cours), téléchargeable.
+// Générée à la demande (pas automatiquement à l'ouverture de Réglages) : elle
+// implique un appel réseau supplémentaire (classement de saison) qu'on
+// n'impose pas tant que le joueur n'a rien demandé.
+// ---------------------------------------------------------------------------
+function resetPlayerCardPreview() {
+  const img = $("#my-player-card-preview");
+  const dlBtn = $("#btn-download-player-card");
+  if (img) {
+    img.style.display = "none";
+    img.removeAttribute("src");
+  }
+  if (dlBtn) {
+    dlBtn.style.display = "none";
+    delete dlBtn.dataset.cardUrl;
+  }
+  const genBtn = $("#btn-generate-player-card");
+  if (genBtn) {
+    genBtn.disabled = false;
+    genBtn.textContent = "🪪 Générer ma carte";
+  }
+}
+
+function loadImageFromUrl(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+const DECO_RING_COLORS = {
+  "deco-or": "#f5c518",
+  "deco-flamme": "#ff6b35",
+  "deco-etoile": "#4fd1c5",
+  "deco-confettis": "#ff6bcb",
+};
+
+async function generatePlayerCardDataUrl(profile) {
+  const W = 700,
+    H = 980;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+
+  const bgGrad = ctx.createLinearGradient(0, 0, W, H);
+  bgGrad.addColorStop(0, "#8b5cf6");
+  bgGrad.addColorStop(1, "#f5b942");
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  const veil = ctx.createLinearGradient(0, 0, 0, H);
+  veil.addColorStop(0, "rgba(0,0,0,.18)");
+  veil.addColorStop(0.45, "rgba(0,0,0,.05)");
+  veil.addColorStop(1, "rgba(0,0,0,.38)");
+  ctx.fillStyle = veil;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 32px sans-serif";
+  ctx.fillText("⚔️ CAR'TECH ARENA", W / 2, 78);
+
+  const cx = W / 2,
+    cy = 330,
+    r = 140;
+  const decoId = profile?.decorations?.active;
+  const deco = decoId ? findAnyDecoration(decoId) : null;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.closePath();
+  ctx.clip();
+  ctx.fillStyle = "#2a3142";
+  ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+  if (profile?.photoDataUrl) {
+    try {
+      const img = await loadImageFromUrl(profile.photoDataUrl);
+      const ratio = Math.max((r * 2) / img.width, (r * 2) / img.height);
+      const dw = img.width * ratio,
+        dh = img.height * ratio;
+      ctx.drawImage(img, cx - dw / 2, cy - dh / 2, dw, dh);
+    } catch (err) {
+      // image illisible : le cercle reste uni, pas bloquant.
+    }
+  } else {
+    ctx.font = "110px sans-serif";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#fff";
+    ctx.fillText("🙂", cx, cy + 8);
+    ctx.textBaseline = "alphabetic";
+  }
+  ctx.restore();
+
+  if (deco?.imageDataUrl) {
+    try {
+      const overlayImg = await loadImageFromUrl(deco.imageDataUrl);
+      const dSize = r * 2 * 1.36;
+      ctx.drawImage(overlayImg, cx - dSize / 2, cy - dSize / 2, dSize, dSize);
+    } catch (err) {
+      // décoration illisible : ignorée, pas bloquant.
+    }
+  } else if (deco?.builtin) {
+    ctx.strokeStyle = DECO_RING_COLORS[deco.css] || "#fff";
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 6, 0, Math.PI * 2);
+    ctx.stroke();
+  } else {
+    ctx.strokeStyle = "rgba(255,255,255,.6)";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 4, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  let y = cy + r + 70;
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 40px sans-serif";
+  ctx.fillText(profile.pseudo || "", cx, y);
+
+  const titleId = profile?.title?.active;
+  const title = titleId ? findAnyTitle(titleId) : null;
+  if (title) {
+    y += 44;
+    ctx.font = "600 23px sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,.92)";
+    ctx.fillText("🎖️ " + title.name, cx, y);
+  }
+
+  y += 66;
+  let rankInfo = null;
+  try {
+    rankInfo = await fetchMySeasonRank(getCurrentUid());
+  } catch (err) {
+    rankInfo = null;
+  }
+  ctx.font = "600 25px sans-serif";
+  ctx.fillStyle = "#fff";
+  if (rankInfo) {
+    ctx.fillText(`🏅 #${rankInfo.rank} / ${rankInfo.total} — Saison ${rankInfo.seasonNumber}`, cx, y);
+    y += 32;
+    ctx.font = "19px sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,.85)";
+    ctx.fillText(`${rankInfo.points} points`, cx, y);
+  } else {
+    ctx.fillStyle = "rgba(255,255,255,.85)";
+    ctx.fillText("Aucune saison en cours", cx, y);
+  }
+
+  ctx.font = "15px sans-serif";
+  ctx.fillStyle = "rgba(255,255,255,.7)";
+  ctx.fillText("Car'Tech Arena", W / 2, H - 28);
+
+  return canvas.toDataURL("image/png");
+}
+
+async function handleGeneratePlayerCard() {
+  const profile = getCurrentProfile();
+  if (!profile) return;
+  const genBtn = $("#btn-generate-player-card");
+  if (genBtn) {
+    genBtn.disabled = true;
+    genBtn.textContent = "Génération…";
+  }
+  try {
+    const dataUrl = await generatePlayerCardDataUrl(profile);
+    const img = $("#my-player-card-preview");
+    if (img) {
+      img.src = dataUrl;
+      img.style.display = "";
+    }
+    const dlBtn = $("#btn-download-player-card");
+    if (dlBtn) {
+      dlBtn.style.display = "";
+      dlBtn.dataset.cardUrl = dataUrl;
+    }
+  } catch (err) {
+    showToast("Impossible de générer la carte pour l'instant.", true);
+  } finally {
+    if (genBtn) {
+      genBtn.disabled = false;
+      genBtn.textContent = "🪪 Générer ma carte";
+    }
+  }
+}
+
+function handleDownloadPlayerCard() {
+  const url = $("#btn-download-player-card")?.dataset.cardUrl;
+  if (url) downloadDataUrl(url, "carte-joueur.png");
 }
 
 // ---------------------------------------------------------------------------
@@ -2138,6 +2398,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   $("#form-search-player").addEventListener("submit", handleSearchPlayer);
 
+  $("#btn-download-my-qr")?.addEventListener("click", handleDownloadMyQr);
+  $("#btn-copy-my-qr-link")?.addEventListener("click", handleCopyMyQrLink);
+  $("#btn-generate-player-card")?.addEventListener("click", handleGeneratePlayerCard);
+  $("#btn-download-player-card")?.addEventListener("click", handleDownloadPlayerCard);
+  $("#btn-open-tutorial")?.addEventListener("click", () => {
+    showAppScreen();
+    showTutorial();
+  });
   $("#admin-app-logo-file")?.addEventListener("change", handleAppLogoFileChosen);
   $("#btn-download-app-logo-template")?.addEventListener("click", downloadAppLogoTemplate);
   $("#btn-app-logo-apply")?.addEventListener("click", handleAppLogoApply);

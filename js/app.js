@@ -28,6 +28,7 @@ import { DEFAULT_OWNED_THEMES } from "./catalog.js";
 import { startLiveCatalogs, stopLiveCatalogs, findAnyDecoration, findAnyTag, findAnyProfileBg, findAnyTitle, applyThemeLive, contrastTextColor, getTagIcon, getAppLogoDataUrl } from "./live-catalog.js";
 import { startHomePlayersListener, stopHomePlayersListener } from "./home-players.js";
 import { startSeasonBannerListener, stopSeasonBannerListener, startCareerStatsListener, stopCareerStatsListener, fetchCareerStats, fetchHeadToHead } from "./season.js";
+import { maybeShowTutorialForNewAccount } from "./tutorial.js";
 
 export const $ = (sel) => document.querySelector(sel);
 
@@ -113,6 +114,51 @@ let pendingSignupPseudo = null;
 // onAuthStateChanged, on ne peut pas se fier à l'ordre d'arrivée pour savoir
 // "qui" a réellement créé le document.
 let pendingReferralPrompt = false;
+
+// ---------------------------------------------------------------------------
+// Parrainage automatique via QR code (voir "Mon QR code" dans Réglages,
+// settings.js) : le lien encodé dans le QR personnel d'un joueur contient
+// "?ref=<uid>" — capturé ici une seule fois au chargement de la page (avant
+// toute connexion), puis appliqué juste après une inscription (voir
+// onAuthStateChanged plus bas), à la place de la modale manuelle « As-tu été
+// parrainé ? ». Nettoyé de la barre d'adresse tout de suite (history
+// replaceState) : ni utile ni joli à garder visible une fois lu.
+// ---------------------------------------------------------------------------
+const refUidFromUrl = (() => {
+  try {
+    const val = new URLSearchParams(location.search).get("ref");
+    return val && val.trim() ? val.trim() : null;
+  } catch {
+    return null;
+  }
+})();
+if (refUidFromUrl) {
+  try {
+    history.replaceState(null, "", location.pathname);
+  } catch {
+    // pas grave si ça échoue (ex. contexte file:// en test) : refUidFromUrl
+    // reste utilisable, seule l'URL visible ne sera pas nettoyée.
+  }
+}
+
+// Applique silencieusement le parrainage capturé depuis l'URL (voir
+// refUidFromUrl ci-dessus) à un compte qui vient tout juste d'être créé.
+// Toute anomalie (uid inconnu, lien vers soi-même, lien périmé) est ignorée
+// sans bloquer l'inscription — le pire cas est simplement "pas de
+// parrainage", jamais une inscription cassée.
+async function applyReferralFromUrl(refUid) {
+  try {
+    if (!refUid || refUid === getCurrentUid()) return;
+    const parrainSnap = await getDoc(doc(db, "users", refUid));
+    if (!parrainSnap.exists()) return;
+    await updateDoc(doc(db, "users", getCurrentUid()), { "referral.referredByUid": refUid });
+    const refreshed = await getDoc(doc(db, "users", getCurrentUid()));
+    if (refreshed.exists()) renderProfile(refreshed.data());
+    showToast(`Tu as été parrainé par ${parrainSnap.data().pseudo} !`);
+  } catch (err) {
+    // silencieux, voir le commentaire de la fonction.
+  }
+}
 
 // Retourne { profile, isNew } : isNew vrai seulement quand CET appel vient
 // de créer le document (utilisé par onAuthStateChanged en secours de
@@ -387,7 +433,7 @@ function showAuthScreen() {
   applyThemeLive("classique");
 }
 
-function showAppScreen() {
+export function showAppScreen() {
   hideAllViews();
   $("#view-app").classList.add("active");
 }
@@ -565,8 +611,17 @@ onAuthStateChanged(auth, async (user) => {
     pendingReferralPrompt = false;
     if (isDisplayModeRequested() && profile.role === "organisateur") {
       document.dispatchEvent(new CustomEvent("cartech:enter-display-mode"));
+    } else if (isNew && refUidFromUrl) {
+      // Inscription via un lien de parrainage (QR personnel d'un joueur) :
+      // on applique directement, sans passer par la modale manuelle.
+      await applyReferralFromUrl(refUidFromUrl);
+      showAppScreen();
+      if (isNew) maybeShowTutorialForNewAccount();
     } else if (shouldPromptReferral) {
-      showReferralModal(() => showAppScreen());
+      showReferralModal(() => {
+        showAppScreen();
+        if (isNew) maybeShowTutorialForNewAccount();
+      });
     } else {
       showAppScreen();
     }

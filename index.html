@@ -146,6 +146,7 @@
       <div class="settings-header">
         <button class="icon-btn" id="btn-close-settings" type="button" title="Retour">←</button>
         <h1 class="settings-title">Paramètres</h1>
+        <button class="icon-btn" id="btn-open-tutorial" type="button" title="Revoir la visite guidée" style="margin-left:auto;">❓</button>
       </div>
 
       <!-- Pseudo -->
@@ -248,6 +249,32 @@
         <h3>🎁 Parrainage</h3>
         <p class="settings-note" id="referral-status"></p>
         <p class="settings-note" id="referral-count">Chargement…</p>
+      </div>
+
+      <!-- QR code de parrainage -->
+      <div class="card settings-section">
+        <h3>📱 Mon QR code de parrainage</h3>
+        <p class="settings-note">Fais-le scanner par un ami avec l'appareil photo de son téléphone : il arrive directement sur l'inscription, avec toi déjà réglé comme parrain — plus besoin de chercher ton pseudo à la main.</p>
+        <div id="my-qr-wrap" style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+          <canvas id="my-qr-canvas" style="max-width:220px;width:100%;height:auto;border-radius:10px;background:#fff;padding:10px;"></canvas>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+            <button class="btn btn-ghost" type="button" id="btn-download-my-qr">⬇️ Télécharger</button>
+            <button class="btn btn-ghost" type="button" id="btn-copy-my-qr-link">🔗 Copier le lien</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Carte de joueur à partager -->
+      <div class="card settings-section">
+        <h3>🪪 Ma carte de joueur</h3>
+        <p class="settings-note">Une image avec ton pseudo, ton titre, ta décoration et ta place au classement de la saison — à partager où tu veux.</p>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+          <img id="my-player-card-preview" alt="Aperçu de la carte de joueur" style="display:none;max-width:260px;width:100%;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.35);">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+            <button class="btn btn-ghost" type="button" id="btn-generate-player-card">🪪 Générer ma carte</button>
+            <button class="btn btn-primary" type="button" id="btn-download-player-card" style="display:none;">⬇️ Télécharger</button>
+          </div>
+        </div>
       </div>
 
       <!-- Rechercher un joueur / voir un profil -->
@@ -643,6 +670,7 @@
 
   <div class="toast" id="toast"></div>
 
+  <script src="js/vendor/qrcode-min.js"></script>
   <script type="module" src="js/app.js"></script>
   <script type="module" src="js/settings.js"></script>
   <script type="module" src="js/daily-duel.js"></script>
